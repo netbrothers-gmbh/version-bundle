@@ -1,6 +1,6 @@
 {
   "name": "netbrothers-gmbh/version-bundle",
-  "description": "Handle versions based on triggers im mysql",
+  "description": "SymfonyBundle for handling versions based on triggers in mysql with doctrine",
   "version": "0.0.1",
   "type": "symfony-bundle",
   "require": {
