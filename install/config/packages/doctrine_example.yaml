@@ -1,0 +1,31 @@
+# This is an example how to use the key schema_filter
+
+
+# You have one database connection???
+doctrine:
+  dbal:
+    url: '%env(resolve:DATABASE_URL)%'
+    schema_filter: ~(?<!_version)$~
+
+  orm:
+  # other stuff here
+
+# You have multiple database connection???
+doctrine:
+  dbal:
+    # configure these for your database server
+    default_connection: default
+    connections:
+      default:
+        # First Connection
+        url: '%env(resolve:DATABASE_URL)%'
+        driver: 'pdo_mysql'
+        schema_filter: ~(?<!_version)$~
+        logging: false
+      second:
+        # Second Connection
+        url: '%env(resolve:DATABASE_SECOND_URL)%'
+        driver: 'pdo_mysql'
+        schema_filter: ~(?<!_version)$~
+  orm:
+    # other stuff here
