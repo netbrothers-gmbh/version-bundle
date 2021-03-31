@@ -76,35 +76,6 @@ class ExecuteService
     }
 
     /**
-     * @param array $sql
-     * @return bool
-     * @throws ConnectionException
-     * @throws DriverException
-     */
-    public function dryRun(array $sql = []): bool
-    {
-        if (!is_array($sql)) {
-            throw new \Exception(__CLASS__ . ': only sql-statements packed in array can be executed.');
-        }
-        if (0 < count($sql)) {
-            $this->connection->beginTransaction();
-            try {
-                foreach ($sql as $query) {
-                    if (true !== $this->_execute($query)) {
-                        return false;
-                    }
-                }
-                $this->connection->rollBack();
-            } catch (\Exception $e) {
-                $this->connection->rollBack();
-                $this->connection->setAutoCommit(true);
-                throw new \Exception("Cannot commit", 500, $e);
-            }
-        }
-        return true;
-    }
-
-    /**
      * @param string $query
      * @return bool
      * @throws ConnectionException

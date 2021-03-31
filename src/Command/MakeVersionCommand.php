@@ -59,8 +59,6 @@ summary:        Overview about things to do
 
 sql:            Overview of prepared SQL-Statements
 
-dry-run:        Test SQL-Statements
-
 EOF;
 
     /** @var JobService */
@@ -83,9 +81,6 @@ EOF;
 
     /** @var AbstractSchemaManager|null */
     private $schemaManager;
-
-    /** @var bool */
-    private $dryRun;
 
     /** configuration */
     protected function configure()
@@ -123,12 +118,6 @@ EOF;
                 '',
                 InputOption::VALUE_NONE,
                 'Print summary to stdout'
-            )
-            ->addOption(
-                'dry-run',
-                '',
-                InputOption::VALUE_NONE,
-                'Test SQL-Statements'
             )
         ;
     }
@@ -279,25 +268,6 @@ EOF;
 
     /**
      * @param InputInterface $input
-     * @param SymfonyStyle $io
-     */
-    private function printDryRunInformation(InputInterface $input, SymfonyStyle $io): void
-    {
-        $this->dryRun = $input->getOption('dry-run');
-        if (false === $this->dryRun) {
-            if ($input->getOption('summary')) {
-                $this->dryRun = true;
-            } elseif ($input->getOption('sql')) {
-                $this->dryRun = true;
-            }
-        }
-        $defMsg =  "option dry-run is %s";
-        $dRunStr = (true === $this->dryRun) ? 'enabled' : 'disabled';
-        $io->note(sprintf($defMsg, $dRunStr));
-    }
-
-    /**
-     * @param InputInterface $input
      * @param OutputInterface $output
      * @return int
      * @throws \Doctrine\DBAL\ConnectionException
@@ -324,8 +294,6 @@ EOF;
             $this->prepareSqlForAllTable($input);
         }
         $io->newLine(2);
-        $this->printDryRunInformation($input, $io);
-        $io->newLine(1);
         $this->printStatistic($io, $input);
         $io->newLine(1);
         if ($input->getOption('summary')) {
@@ -341,11 +309,7 @@ EOF;
             $io->note("Operation canceled");
             return 1;
         }
-        if (true === $this->dryRun) {
-            $this->executeService->dryRun($this->sql);
-        } else {
-            $this->executeService->execute($this->sql);
-        }
+        $this->executeService->execute($this->sql);
         if ($this->jobService->hasWarning()) {
             $this->printReport($io);
         }
