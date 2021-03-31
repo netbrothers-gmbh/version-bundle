@@ -56,12 +56,12 @@ Setup
 =============
 You have to set up the bundle:
 
-1. Copy `installation/config/packages/netbrothers_version.yaml` to symfony's config path.
+1. Copy `vendor/netbrothers-gmbh/install/config/packages/netbrothers_version.yaml` to symfony's config path.
 
 
 2. If you use Doctrine's migration:
    - Find out the config file `doctrine.yaml` and insert `schema_filter: ~(?<!_version)$~`
-     (find an example under `installation/config/packages/doctrine_example.yaml`).
+     (find an example under `vendor/netbrothers-gmbh/install/config/packages/doctrine_example.yaml`).
      This tells Doctrine migrations to ignore the version tables. If you do not do this, 
      doctrine migrations will drop the version tables on next migration!
    - Open `netbrothers_version.yaml` and set Doctrine's migration table as ignored. If you do not do this,
@@ -79,14 +79,17 @@ Usage
 
 1. Prepare your origin tables:
     Add a column named `version` (type INT/BIGINT) to every table, you wish to have a version table.
-    Best practice is to use the trait `src/Traits/VersionColumn.php` in your entities and make a migration.
-2. Open a command console, enter your project directory and execute the following command:
+    Best practice is to use the trait `src/Traits/VersionColumn.php` in your entities.
+   
+2. Make a migration.
+   
+3. Open a command console, enter your project directory and execute the following command:
 ```console
 php bin/console netbrothers:version 
 ```
 
 The command will now recognize all tables with a `version`-column:
-* Create a version table, if no one exists.
+* Create a version table, if none exists.
 * If a version table exists, compare the columns in both tables.
 * Drop existing triggers.
 * Create triggers.
@@ -105,7 +108,6 @@ You can specify some options:
 | drop-version              | Drop triggers, drop version table                               |
 | summary                   | print todos to stdout  - do not execute                         |
 | sql                       | print prepared SQL-Statements to stdout - do not execute        |
-| dry-run                   | Test SQL-Statements (execute and roll back)                     |
 
 
 Author
