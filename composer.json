@@ -2,6 +2,7 @@
   "name": "netbrothers-gmbh/version-bundle",
   "description": "SymfonyBundle for handling versions based on triggers in mysql with doctrine",
   "version": "0.0.1",
+  "keywords": ["symfony","bundle","versioning","doctrine","mysql"],
   "type": "symfony-bundle",
   "require": {
     "php": ">=7.2.5",
