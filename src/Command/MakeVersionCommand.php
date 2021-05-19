@@ -1,14 +1,13 @@
 <?php
+
 /**
  * NetBrothers VersionBundle
  *
  * @author Stefan Wessel, NetBrothers GmbH
  * @date 19.03.21
- *
  */
 
 namespace NetBrothers\VersionBundle\Command;
-
 
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\SchemaException;
@@ -18,6 +17,7 @@ use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -44,7 +44,7 @@ command will recognize every table - expected the configured tables to be ignore
 
 If you do not use any option, the default behaviour is to create version tables and corresponding triggers.
 Also it will drop triggers on every table, which has no version table.             
-            
+
 
 Options:
 ========
@@ -86,55 +86,83 @@ EOF;
     protected function configure()
     {
         $this
-            ->setDescription('Create version-tables and MySQl-Trigger')
+            ->setDescription('Create version tables and MySQL triggers.')
             ->setHelp(self::HELP_TEXT)
             ->addArgument(
                 'tableName',
                 InputArgument::OPTIONAL,
-                'Work only on this table')
+                'Work only on this table.')
             ->addOption(
                 'create-trigger',
                 '',
                 InputOption::VALUE_NONE,
-                'Drop and create new trigger')
+                'Drop and create new triggers.')
             ->addOption(
                 'drop-version',
                 '',
                 InputOption::VALUE_NONE,
-                'Drop version table and trigger')
+                'Drop version tables and triggers.')
             ->addOption(
                 'drop-trigger',
                 '',
                 InputOption::VALUE_NONE,
-                'Drop trigger')
+                'Drop triggers.')
             ->addOption(
                 'sql',
                 '',
                 InputOption::VALUE_NONE,
-                'Print SQL-Statements to stdout'
+                'Print SQL statements to stdout.'
             )
             ->addOption(
                 'summary',
                 '',
                 InputOption::VALUE_NONE,
-                'Print summary to stdout'
+                'Print summary to stdout.'
             )
         ;
     }
 
     /**
-     * MakeVersionCommand constructor.
-     * @param EntityManagerInterface $entityManager
-     * @param array $ignoreTables
-     * @param array $excludeColumnNames
-     * @throws \Exception
+     * @param null|EntityManagerInterface $entityManager 
+     * @param array $ignoreTables 
+     * @param array $excludeColumnNames 
+     * @param bool $initLater 
+     * @return void 
+     * @throws InvalidArgumentException 
      */
     public function __construct(
-        EntityManagerInterface $entityManager,
+        ?EntityManagerInterface $entityManager = null,
+        array $ignoreTables = [],
+        array $excludeColumnNames = [],
+        bool $initLater = false
+    )
+    {
+        parent::__construct();
+        if ($initLater) {
+            return;
+        }
+        $this->initCommand(
+            $entityManager,
+            $ignoreTables,
+            $excludeColumnNames
+        );
+    }
+
+    /**
+     * Method for an initialization after the command has been constructed.
+     * Needed for the standalone version.
+     * 
+     * @param EntityManagerInterface|null $entityManager
+     * @param array $ignoreTables
+     * @param array $excludeColumnNames
+     * @return void
+     */
+    public function initCommand(
+        EntityManagerInterface $entityManager = null,
         array $ignoreTables = [],
         array $excludeColumnNames = []
-    ){
-        parent::__construct();
+    )
+    {
         $this->entityManager = $entityManager;
         $con = $this->entityManager->getConnection();
         $con->getConfiguration()->setSchemaAssetsFilter(null);
