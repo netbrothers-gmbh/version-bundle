@@ -1,6 +1,6 @@
 {
     "name": "netbrothers-gmbh/version-bundle",
-    "description": "Trigger based version tables with MySQL and Doctrine",
+    "description": "Trigger based version tables with MariaDB/MySQL and Doctrine",
     "version": "0.0.2",
     "type": "symfony-bundle",
     "keywords": [
@@ -12,12 +12,10 @@
     "require": {
         "php": ">=7.4",
         "symfony/console": "*",
-        "symfony/dotenv": "*",
-        "symfony/monolog-bundle": "*",
-        "symfony/orm-pack": "*"
+        "doctrine/orm": "*"
     },
     "bin": [
-        "bin/nb-versions"
+        "bin/netbrothers-version"
     ],
     "autoload": {
         "psr-4": {

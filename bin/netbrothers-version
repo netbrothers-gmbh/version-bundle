@@ -1,21 +1,19 @@
 #!/usr/bin/env php
 <?php
 
-use NetBrothers\VersionBundle\Command\MakeVersionStandaloneEditionCommand;
+use NetBrothers\VersionBundle\Command\MakeVersionStandaloneCommand;
 use Symfony\Component\Console\Application;
 
 /**
- * `__DIR__` represents
- * `<project_dir>/vendor/netbrothers-gmbh/version-bundle/bin`,
- * such that the three `/..` will neutralise
- * `/netbrothers-gmbh/version-bundle/bin`
+ * `__DIR__` represents `<project_dir>/vendor/netbrothers-gmbh/version-bundle/bin`,
+ * such that the three `/..` will neutralise `/netbrothers-gmbh/version-bundle/bin`
  * and yield the project's `vendor` directory.
  */
 
 $libModeAutoload = __DIR__ . '/../../../autoload.php';
 
 if (file_exists($libModeAutoload)) {
-    // used as a binary script of a composer package (vendor/bin/nb-versions)
+    // used as a binary script of a composer package (vendor/bin/netbrothers-version)
     require $libModeAutoload;
 } else {
     // used entirely standalone (e.g. git clone)
@@ -24,9 +22,9 @@ if (file_exists($libModeAutoload)) {
 
 // @todo SingleCommandApplication, once Symfony 5.1 is established.
 $cliApp = new Application;
-$cliApp->setName('NetBrothers GmbH - MySQL versioning with triggers');
+$cliApp->setName('NetBrothers GmbH - MariaDB/MySQL versioning with triggers');
 $cliApp->setVersion('0.0.2');
-$versionsCmd = new MakeVersionStandaloneEditionCommand;
+$versionsCmd = new MakeVersionStandaloneCommand;
 $cliApp->addCommands([$versionsCmd]);
 $cliApp->setDefaultCommand($versionsCmd->getName());
 $cliApp->run();

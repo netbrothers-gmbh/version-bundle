@@ -16,12 +16,12 @@ use Symfony\Component\Console\Output\OutputInterface;
  * 
  * @author Thilo Ratnaweera <info@netbrothers.de>
  * @copyright © 2021 NetBrothers GmbH.
- * @license All rights reserved.
+ * @license MIT
  */
-final class MakeVersionStandaloneEditionCommand extends MakeVersionCommand
+final class MakeVersionStandaloneCommand extends MakeVersionCommand
 {
     private EntityManagerInterface $entityManager;
-    protected static $defaultName = 'nb-versions';
+    protected static $defaultName = 'netbrothers:version-standalone';
 
     protected function configure()
     {
@@ -30,7 +30,7 @@ final class MakeVersionStandaloneEditionCommand extends MakeVersionCommand
             'container-file',
             'c',
             InputOption::VALUE_REQUIRED,
-            'Path to a PHP file which will return a PSR-11 compatible DI-Container.'
+            'Path to a PHP file which will return a PSR-11 compatible DI container.'
         );
         $this->addOption(
             'ignore-table',

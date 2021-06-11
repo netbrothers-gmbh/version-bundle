@@ -1,5 +1,5 @@
 netbrothers_version:
-  ignore_tables: # this tables will be ignored
+  ignore_tables: # these tables will be ignored
     ['doctrine_migration_versions']
-  ignore_columns: # this columns will not be compare
+  ignore_columns: # these columns will not be compared
     ['id', 'version', 'created_at', 'updated_at']
