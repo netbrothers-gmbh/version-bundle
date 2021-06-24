@@ -71,8 +71,7 @@ on the next occasion. You can find a configuration example in the file
 do not do this, this table will also be versioned.
 
 3. You can specify columns by name to be always ignored by the compare algorithm 
-when creating versions. This is done in the file `netbrothers_version.yaml` you
-have copied into your project's config directory earlier.
+when creating versions. This is also done in the file `netbrothers_version.yaml`.
 
 4. Clear Symfony's cache: `bin/console cache:clear`.
 
@@ -120,8 +119,8 @@ The version command provides these options (sub commands).
 | `--create-trigger` (default)  | drop triggers, create non-existent version tables, recreate triggers |
 | `--drop-trigger`   | drop triggers                                                |
 | `--drop-version`   | drop triggers, drop version tables                           |
-| `--summary`        | print a summary of necessary actions without executing them  |
-| `--sql`            | print a prepared SQL statement without executing it          |
+| `--sql`            | print the SQL statements without doing anything              |
+| `--summary`        | print a human readable summary of what the command would do  |
 
 ## Licence
 
