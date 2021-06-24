@@ -1,47 +1,47 @@
-NetBrothers Versions for Symfony
-===================================
-This is a symfony bundle for managing versions in version tables.
+# NetBrothers Version Bundle
 
-The bundle offers a command, which will create version tables based on the columns in your
-origin tables: All tables with a column named `version` (type INT/BIGINT) will have a corresponding 
-version table called `[originTableName]_version` with same columns of the originTable. 
+This hybrid package works as a [Symfony bundle](https://symfony.com/doc/current/bundles.html)
+or as a standalone PHP package for managing versioned tables in [MariaDB](https://mariadb.com/)
+and [MySQL](https://www.mysql.com/) databases.
 
-Every originTable gets trigger, which will increase the version column on insert/updates and 
-saves a copy in the version table.
+It makes use of the [Doctrine ORM](https://www.doctrine-project.org/projects/orm.html)
+to interact with your database.
 
-__NOTE__: This works only for MySQL-Databases.
+__NOTE__: This package doesn't necessarily work with RDBMS other than MySQL/MariaDB.
 
-Installation
-============
-Make sure Composer is installed globally, as explained in the
-[installation chapter](https://getcomposer.org/doc/00-intro.md)
-of the Composer documentation.
+In essence, this package provides one command which does two things.
 
-Applications that use Symfony Flex
-----------------------------------
+### Create Version Tables
 
-Open a command console, enter your project directory and execute:
+For tables (e.g. `src_table`) with a column named `version` of type `INT`/`BIGINT`
+the script will create a corresponding version table (e.g. `src_table_version`)
+having identical columns.
 
-```console
-composer require netbrothers-gmbh/version-bundle
-```
+### Create Version Triggers
 
-Applications that don't use Symfony Flex
-----------------------------------------
+For every versioned origin table the script creates a trigger, which will
+increase the version number in the version column on updates and saves a copy
+in the version table.
 
-### Step 1: Download the Bundle
+## Prerequisites
 
-Open a command console, enter your project directory and execute the
-following command to download the latest stable version of this bundle:
+[Composer](https://getcomposer.org/) must be available on the command line prompt.
+
+## Installation
+
+Open a command prompt, change into your project's root directory and execute
+the command.
 
 ```console
 composer require netbrothers-gmbh/version-bundle
 ```
 
-### Step 2: Enable the Bundle
+### Installation without Symfony Flex
 
-Then, enable the bundle by adding it to the list of registered bundles
-in the `config/bundles.php` file of your project:
+__NOTE__: If you are using Symfony Flex (you probably do), you can skip this step.
+
+Enable the bundle by adding it to the list of registered bundles in the file 
+`config/bundles.php` in your project.
 
 ```php
 // config/bundles.php
@@ -52,70 +52,84 @@ return [
 ];
 ```
 
-Setup
-=============
-You have to set up the bundle:
+### Installation with Symfony Flex
 
-1. Copy `vendor/netbrothers-gmbh/install/config/packages/netbrothers_version.yaml` to symfony's config path.
+By requiring the package with Composer, Symfony Flex automatically registers it
+as a Symfony bundle. However, there's still some configuration necessary.
 
+1. Copy the file [netbrothers_version.yaml](install/config/packages/netbrothers_version.yaml) from the `install` folder of this package to your Symfony project's config path.
 
-2. If you use Doctrine's migration:
-   - Find out the config file `doctrine.yaml` and insert `schema_filter: ~(?<!_version)$~`
-     (find an example under `vendor/netbrothers-gmbh/install/config/packages/doctrine_example.yaml`).
-     This tells Doctrine migrations to ignore the version tables. If you do not do this, 
-     doctrine migrations will drop the version tables on next migration!
-   - Open `netbrothers_version.yaml` and set Doctrine's migration table as ignored. If you do not do this,
-     this table will also have a version table!
+2. If you use [Doctrine Migrations](https://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html)
+    - instruct it to ignore your version tables, by customizing the
+schema filter in the `doctrine.yaml` config file with `schema_filter: ~(?<!_version)$~`
+for instance. __NOTE__: Otherwise Doctrine Migrations may drop your version tables
+on the next occasion. You can find a configuration example in the file
+[doctrine_example.yaml](install/config/packages/doctrine_example.yaml) in the
+`install` folder of this package.
+   - Open `netbrothers_version.yaml` and configure Doctrine's migration table
+(it's mostly named `doctrine_migration_versions`) to be ignored. __NOTE__: If you
+do not do this, this table will also be versioned.
 
+3. You can specify columns by name to be always ignored by the compare algorithm 
+when creating versions. This is done in the file `netbrothers_version.yaml` you
+have copied into your project's config directory earlier.
 
-3. In `netbrothers_version.yaml` you can define columns, which are always ignored by the compare algorithm
-   (The command always compares existing version tables with their origin tables). 
-   
+4. Clear Symfony's cache: `bin/console cache:clear`.
 
-4. Clear symfony's cache.
+## Usage
 
-Usage
-=====
+### Prepare your Entities/Origin Tables
 
-1. Prepare your origin tables:
-    Add a column named `version` (type INT/BIGINT) to every table, you wish to have a version table.
-    Best practice is to use the trait `src/Traits/VersionColumn.php` in your entities.
-   
-2. Make a migration.
-   
-3. Open a command console, enter your project directory and execute the following command:
+Add a column named `version` (type `INT`/`BIGINT`) to every table you want to
+be versioned. This can be done by adding the Trait
+[VersionColumn](src/Traits/VersionColumn.php) to your entities and then creating
+and applying a migration (e.g. with `bin/console make:migration`).
+
+### Create Version Tables and Triggers
+
+Issue the following command.
+
 ```console
-php bin/console netbrothers:version 
+bin/console netbrothers:version 
 ```
 
-The command will now recognize all tables with a `version`-column:
-* Create a version table, if none exists.
-* If a version table exists, compare the columns in both tables.
-* Drop existing triggers.
-* Create triggers.
+For every table with a `version`-column the command will
 
-You can specify a single table as argument. The command will just check this table:
+- create a corresponding version table (if it doesn't exist yet),
+- compare the columns in both tables and alter the version table to match
+  the origin table,
+- (if present) it will drop the old version triggers and
+- (in any case) it will create the version triggers.
+
+
+### Create Version Tables and Triggers for a Single Table
+
+If needed, you can apply the versioning to a single table. This can be done by
+providing the table name as an argument to the console command.
+
 ```console
-php bin/console netbrothers:version blog
+bin/console netbrothers:version [<tableName>]
 ```
 
-You can specify some options:
+### Command Line Options
 
-| option                    | meaning |
-| -----------               | ------- |
-| create-trigger (default)  | Drop triggers, create not existing version tables, create triggers |
-| drop-trigger              | Drop triggers                                                   |
-| drop-version              | Drop triggers, drop version table                               |
-| summary                   | print todos to stdout  - do not execute                         |
-| sql                       | print prepared SQL-Statements to stdout - do not execute        |
+The version command provides these options (sub commands).
 
+| Option             | Meaning                                                      |
+| -------------      | ------------------------------------------------------------ |
+| `--create-trigger` (default)  | drop triggers, create non-existent version tables, recreate triggers |
+| `--drop-trigger`   | drop triggers                                                |
+| `--drop-version`   | drop triggers, drop version tables                           |
+| `--summary`        | print a summary of necessary actions without executing them  |
+| `--sql`            | print a prepared SQL statement without executing it          |
 
-Author
-======
-[Stefan Wessel, NetBrothers GmbH](https://netbrothers.de)
+## Licence
+
+MIT
+
+## Authors
+
+- [Stefan Wessel, NetBrothers GmbH](https://netbrothers.de)
+- [Thilo Ratnaweera, NetBrothers GmbH](https://netbrothers.de)
 
 [![nb.logo](https://netbrothers.de/wp-content/uploads/2020/12/netbrothers_logo.png)](https://netbrothers.de)
-
-Licence
-=======
-MIT
