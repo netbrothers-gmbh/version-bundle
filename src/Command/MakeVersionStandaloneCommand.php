@@ -60,7 +60,7 @@ final class MakeVersionStandaloneCommand extends MakeVersionCommand
             $input->getOption('ignore-table'),
             $input->getOption('exclude-column')
         );
-        parent::execute($input, $output);
+        return parent::execute($input, $output);
     }
 
     private function initEntityManager(InputInterface $input)

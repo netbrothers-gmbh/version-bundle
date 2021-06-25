@@ -204,8 +204,6 @@ class MakeVersionCommand extends Command
         return $sql;
     }
 
-
-
     /** print report to stdout
      *
      * @param SymfonyStyle $io
