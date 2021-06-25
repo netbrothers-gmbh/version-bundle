@@ -36,26 +36,28 @@ the command.
 composer require netbrothers-gmbh/version-bundle
 ```
 
-### Installation without Symfony Flex
+For any non-Symfony project, that's it.
 
-__NOTE__: If you are using Symfony Flex (you probably do), you can skip this step.
+### Symfony
 
-Enable the bundle by adding it to the list of registered bundles in the file 
-`config/bundles.php` in your project.
+If you **don't** use Symfony Flex you have to enable the bundle by adding it to the
+list of registered bundles in the file `config/bundles.php` in your project.
 
 ```php
 // config/bundles.php
-
 return [
     // ...
     NetBrothers\VersionBundle\NetBrothersVersionBundle::class => ['all' => true],
+    // ...
 ];
 ```
 
-### Installation with Symfony Flex
+If you use Symfony Flex it will automatically register the bundle simply by
+requiring it with Composer.
 
-By requiring the package with Composer, Symfony Flex automatically registers it
-as a Symfony bundle. However, there's still some configuration necessary.
+## Configuration
+
+### Symfony
 
 1. Copy the file [netbrothers_version.yaml](install/config/packages/netbrothers_version.yaml) from the `install` folder of this package to your Symfony project's config path.
 
@@ -75,6 +77,43 @@ when creating versions. This is also done in the file `netbrothers_version.yaml`
 
 4. Clear Symfony's cache: `bin/console cache:clear`.
 
+### Standalone
+
+In most PHP frameworks you will have a [PSR-11 compatible container](https://php-di.org/)
+to manage your dependencies. You'll have to provide this container to the script
+via a file argument. An example:
+
+```console
+vendor/bin/netbrothers-version --container-file=config/container.php --summary
+```
+
+The script will check if the provided container implements the
+[PSR-11 `ContainerInterface`](https://github.com/php-fig/container/blob/master/src/ContainerInterface.php).
+If it does, it will assume an instance of the
+[Doctrine EntityManager](https://github.com/doctrine/orm/blob/2.8.x/lib/Doctrine/ORM/EntityManagerInterface.php)
+under the key `EntityManagerInterface::class`. Here's an example on how to check,
+if your container file works properly.
+
+```php
+<?php
+
+require_once '/path/to/vendor/autoload.php';
+
+use Psr\Container\ContainerInterface;
+use Doctrine\ORM\EntityManagerInterface;
+
+$container = require '/path/to/your/container-file.php';
+
+if (
+    $container instanceof ContainerInterface
+    && $container->get(EntityManagerInterface::class) instanceof EntityManagerInterface
+) {
+    // everything is fine
+} else {
+    // you need to check your container file
+}
+```
+
 ## Usage
 
 ### Prepare your Entities/Origin Tables
@@ -82,14 +121,19 @@ when creating versions. This is also done in the file `netbrothers_version.yaml`
 Add a column named `version` (type `INT`/`BIGINT`) to every table you want to
 be versioned. This can be done by adding the Trait
 [VersionColumn](src/Traits/VersionColumn.php) to your entities and then creating
-and applying a migration (e.g. with `bin/console make:migration`).
+and applying a [migration](https://www.doctrine-project.org/projects/migrations.html).
 
 ### Create Version Tables and Triggers
 
 Issue the following command.
 
 ```console
+
+# Symfony
 bin/console netbrothers:version 
+
+# Standalone
+vendor/bin/netbrothers-version --container-file=config/container.php
 ```
 
 For every table with a `version`-column the command will
@@ -100,14 +144,18 @@ For every table with a `version`-column the command will
 - (if present) it will drop the old version triggers and
 - (in any case) it will create the version triggers.
 
-
 ### Create Version Tables and Triggers for a Single Table
 
 If needed, you can apply the versioning to a single table. This can be done by
 providing the table name as an argument to the console command.
 
 ```console
+
+# Symfony
 bin/console netbrothers:version [<tableName>]
+
+# Standalone
+vendor/bin/netbrothers-version --container-file=config/container.php [<tableName>]
 ```
 
 ### Command Line Options

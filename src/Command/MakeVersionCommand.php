@@ -30,36 +30,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class MakeVersionCommand extends Command
 {
+    /** @inheritdoc */
     protected static $defaultName = 'netbrothers:version';
-
-    const HELP_TEXT=<<<EOF
-This command creates versions of database tables. Records are copied via triggers.
-
-All tables with a column named `version` (type INT/BIGINT) will get a version table called 
-`[originTableName]_version` with same columns of the originTable. Every originTable gets trigger, 
-which will increase the version column on insert/updates and saves a copy in the version table.
-
-You can specify as argument a single table name. If you do not specify a single table name as argument, this
-command will recognize every table - expected the configured tables to be ignored.
-
-If you do not use any option, the default behaviour is to create version tables and corresponding triggers.
-Also it will drop triggers on every table, which has no version table.             
-
-
-Options:
-========
-
-create-trigger: Drop triggers, create necessary version tables, create triggers
-
-drop-trigger:   Drop triggers
-
-drop-version:   Drop triggers, drop version table(s) 
-
-summary:        Overview about things to do
-
-sql:            Overview of prepared SQL-Statements
-
-EOF;
 
     /** @var JobService */
     private $jobService;
@@ -86,40 +58,43 @@ EOF;
     protected function configure()
     {
         $this
-            ->setDescription('Create version tables and MySQL triggers.')
-            ->setHelp(self::HELP_TEXT)
+            ->setDescription('Create version tables and triggers.')
+            ->setHelp('See vendor/netbrothers-gmbh/version-bundle/README.md')
             ->addArgument(
                 'tableName',
                 InputArgument::OPTIONAL,
-                'Work only on this table.')
+                'work only on this table'
+            )
             ->addOption(
                 'create-trigger',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Drop and create new triggers.')
+                'drop triggers, create missing version tables, recreate triggers'
+            )
             ->addOption(
                 'drop-version',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Drop version tables and triggers.')
+                'drop triggers, drop version tables'
+            )
             ->addOption(
                 'drop-trigger',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Drop triggers.')
+                'drop triggers'
+            )
             ->addOption(
                 'sql',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Print SQL statements to stdout.'
+                'print the SQL statements without doing anything'
             )
             ->addOption(
                 'summary',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Print summary to stdout.'
-            )
-        ;
+                'print a human readable summary of what the command would do'
+            );
     }
 
     /**
@@ -321,7 +296,7 @@ EOF;
         } else {
             $this->prepareSqlForAllTable($input);
         }
-        $io->newLine(2);
+        $io->newLine(1);
         $this->printStatistic($io, $input);
         $io->newLine(1);
         if ($input->getOption('summary')) {
