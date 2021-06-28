@@ -2,46 +2,46 @@
 
 This hybrid package works as a [Symfony bundle](https://symfony.com/doc/current/bundles.html)
 or as a standalone PHP package for managing versioned tables in [MariaDB](https://mariadb.com/)
-and [MySQL](https://www.mysql.com/) databases.
+and [MySQL](https://www.mysql.com/) databases. It makes use of the
+[Doctrine ORM](https://www.doctrine-project.org/projects/orm.html) to interact
+with your database.
 
-It makes use of the [Doctrine ORM](https://www.doctrine-project.org/projects/orm.html)
-to interact with your database.
-
-__NOTE__: This package doesn't necessarily work with RDBMS other than MySQL/MariaDB.
+__NOTE__: This package is designed to work with MariaDB/MySQL. It is **not**
+considered to work with other RDBMS.
 
 In essence, this package provides one command which does two things.
 
-### Create Version Tables
+1. Create Version Tables  
+For tables (e.g. `orig_table`) with a column named `version` of type
+`INT`/`BIGINT` the script will create a corresponding version table (e.g.
+`orig_table_version`) so that origin and version tables are structurally identical.
 
-For tables (e.g. `src_table`) with a column named `version` of type `INT`/`BIGINT`
-the script will create a corresponding version table (e.g. `src_table_version`)
-having identical columns.
-
-### Create Version Triggers
-
-For every versioned origin table the script creates a trigger, which will
-increase the version number in the version column on updates and saves a copy
-in the version table.
-
-## Prerequisites
-
-[Composer](https://getcomposer.org/) must be available on the command line prompt.
+2. Create Version Triggers  
+For every versioned origin table the script creates a trigger, which will on
+`INSERT`s and `UPDATE`s increase the version number in the version column and
+save a copy of the row in the version table.
 
 ## Installation
 
-Open a command prompt, change into your project's root directory and execute
-the command.
+On the command prompt, change into your project's root directory and execute:
 
 ```console
 composer require netbrothers-gmbh/version-bundle
 ```
 
-For any non-Symfony project, that's it.
+There are three installation variants:
 
-### Symfony
+### Standalone Package
 
-If you **don't** use Symfony Flex you have to enable the bundle by adding it to the
-list of registered bundles in the file `config/bundles.php` in your project.
+No further installation steps are necessary.
+### Symfony Bundle with Flex
+
+No further installation steps are necessary. Symfony Flex will automatically
+register the bundle in `config/bundles.php`.
+### Symfony Bundle without Flex
+
+You have to enable the bundle by adding it to the list of registered bundles in
+the file `config/bundles.php` in your project.
 
 ```php
 // config/bundles.php
@@ -52,36 +52,36 @@ return [
 ];
 ```
 
-If you use Symfony Flex it will automatically register the bundle simply by
-requiring it with Composer.
-
 ## Configuration
 
-### Symfony
+### Symfony Bundle
 
-1. Copy the file [netbrothers_version.yaml](install/config/packages/netbrothers_version.yaml) from the `install` folder of this package to your Symfony project's config path.
+Copy the file [netbrothers_version.yaml](install/config/packages/netbrothers_version.yaml)
+from the `install` folder of this package to your Symfony project's config path.
 
-2. If you use [Doctrine Migrations](https://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html)
-    - instruct it to ignore your version tables, by customizing the
-schema filter in the `doctrine.yaml` config file with `schema_filter: ~(?<!_version)$~`
-for instance. __NOTE__: Otherwise Doctrine Migrations may drop your version tables
-on the next occasion. You can find a configuration example in the file
-[doctrine_example.yaml](install/config/packages/doctrine_example.yaml) in the
-`install` folder of this package.
-   - Open `netbrothers_version.yaml` and configure Doctrine's migration table
-(it's mostly named `doctrine_migration_versions`) to be ignored. __NOTE__: If you
-do not do this, this table will also be versioned.
+#### **Doctrine Migrations**
 
-3. You can specify columns by name to be always ignored by the compare algorithm 
-when creating versions. This is also done in the file `netbrothers_version.yaml`.
+If you are using [Doctrine Migrations](https://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html)
+instruct it to ignore your version tables, by using/customizing the
+[schema filter](https://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html#manual-tables) option.
+If you don't have any other schema filter, you might use this:
+`schema_filter: ~(?<!_version)$~`. See in the [example file](install/config/packages/doctrine_example.yaml)
+how it's done.
 
-4. Clear Symfony's cache: `bin/console cache:clear`.
+__NOTE__: If you don't filter your version tables, Doctrine may drop them on the
+next occasion.
+
+#### **Bundle Configuration**
+
+You can specify certain columns (by name) to always be ignored by the compare
+algorithm when creating versions. See how it's done in the example file
+[`netbrothers_version.yaml`](install/config/packages/netbrothers_version.yaml).
 
 ### Standalone
 
 In most PHP frameworks you will have a [PSR-11 compatible container](https://php-di.org/)
 to manage your dependencies. You'll have to provide this container to the script
-via a file argument. An example:
+via a file argument.
 
 ```console
 vendor/bin/netbrothers-version --container-file=config/container.php --summary
@@ -90,8 +90,8 @@ vendor/bin/netbrothers-version --container-file=config/container.php --summary
 The script will check if the provided container implements the
 [PSR-11 `ContainerInterface`](https://github.com/php-fig/container/blob/master/src/ContainerInterface.php).
 If it does, it will assume an instance of the
-[Doctrine EntityManager](https://github.com/doctrine/orm/blob/2.8.x/lib/Doctrine/ORM/EntityManagerInterface.php)
-under the key `EntityManagerInterface::class`. Here's an example on how to check,
+[Doctrine EntityManagerInterface](https://github.com/doctrine/orm/blob/2.8.x/lib/Doctrine/ORM/EntityManagerInterface.php)
+by the identifier `EntityManagerInterface::class`. Here's an example on how to check,
 if your container file works properly.
 
 ```php
@@ -114,6 +114,19 @@ if (
 }
 ```
 
+In standalone mode, ignoring tables and columns is controlled by command
+line options.
+
+```console
+vendor/bin/netbrothers-version \
+    --container-file=config/container.php \
+    --ignore-table=unversioned_table_one \
+    --ignore-table=unversioned_table_two \
+    --exclude-column=unversioned_column_one \
+    --exclude-column=unversioned_column_two \
+    --create-trigger
+```
+
 ## Usage
 
 ### Prepare your Entities/Origin Tables
@@ -121,14 +134,13 @@ if (
 Add a column named `version` (type `INT`/`BIGINT`) to every table you want to
 be versioned. This can be done by adding the Trait
 [VersionColumn](src/Traits/VersionColumn.php) to your entities and then creating
-and applying a [migration](https://www.doctrine-project.org/projects/migrations.html).
+and applying a migration.
 
 ### Create Version Tables and Triggers
 
 Issue the following command.
 
 ```console
-
 # Symfony
 bin/console netbrothers:version 
 
