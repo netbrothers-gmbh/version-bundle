@@ -11,7 +11,6 @@ namespace NetBrothers\VersionBundle\Services\Sql;
 
 
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\ConnectionException;
 use Doctrine\DBAL\Driver\Exception as DriverException;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -78,20 +77,20 @@ class ExecuteService
     /**
      * @param string $query
      * @return bool
-     * @throws ConnectionException
-     * @throws DriverException
      * @throws \Doctrine\DBAL\Exception
      */
     private function _execute(string $query): bool
     {
-        $statement = $this->connection->prepare($query);
-        if (true !== $statement->execute()) {
+        try {
+            $statement = $this->connection->prepare($query);
+            $result = $statement->executeQuery();
+            return true;
+        } catch ( DriverException $e) {
             $this->connection->rollBack();
             $this->connection->setAutoCommit(true);
             $this->errMsg = "Cannot execute SQL: $query";
             return false;
         }
-        return true;
     }
 
 }
