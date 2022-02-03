@@ -3,7 +3,7 @@ Changelog for NetBrothers Versions
 
 Version 0.0.3 - 03.02.2022
 ----------------------------------
-- Adding "?ExtensionInterface" as a native return type declaration in class `NetBrothers\SyncAccBundle\NetBrothersSyncAccBundle`.
+- Adding "?ExtensionInterface" as a native return type declaration in class `NetBrothers\VersionBundle\NetBrothersVersionBundle`.
 - php requirements updated in composer.json to >=7.4
 - Upgrading Version-Number
 
