@@ -57,17 +57,13 @@ class ExecuteService
             throw new \Exception(__CLASS__ . ': only sql-statements packed in array can be executed.');
         }
         if (0 < count($sql)) {
-            $this->connection->beginTransaction();
             try {
                 foreach ($sql as $query) {
                     if (true !== $this->_execute($query)) {
                         return false;
                     }
                 }
-                $this->connection->commit();
             } catch (\Exception $e) {
-                $this->connection->rollBack();
-                $this->connection->setAutoCommit(true);
                 throw new \Exception("Cannot commit", 500, $e);
             }
         }
@@ -86,8 +82,6 @@ class ExecuteService
             $result = $statement->executeQuery();
             return true;
         } catch ( DriverException $e) {
-            $this->connection->rollBack();
-            $this->connection->setAutoCommit(true);
             $this->errMsg = "Cannot execute SQL: $query";
             return false;
         }
