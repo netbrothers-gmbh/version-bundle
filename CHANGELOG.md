@@ -1,6 +1,11 @@
 Changelog for NetBrothers Versions 
 ===================================
 
+Version 0.0.4 - 18.02.2022
+----------------------------------
+- Fixing Bug "There is no active transaction".
+- Upgrading Version-Number
+
 Version 0.0.3 - 03.02.2022
 ----------------------------------
 - Adding "?ExtensionInterface" as a native return type declaration in class `NetBrothers\VersionBundle\NetBrothersVersionBundle`.
