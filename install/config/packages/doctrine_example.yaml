@@ -1,7 +1,6 @@
 # This is an example how to use the key schema_filter
 
-
-# You have one database connection???
+# if you have one database connection
 doctrine:
   dbal:
     url: '%env(resolve:DATABASE_URL)%'
@@ -10,20 +9,20 @@ doctrine:
   orm:
   # other stuff here
 
-# You have multiple database connection???
+# if you have multiple database connections
 doctrine:
   dbal:
     # configure these for your database server
     default_connection: default
     connections:
       default:
-        # First Connection
+        # first connection
         url: '%env(resolve:DATABASE_URL)%'
         driver: 'pdo_mysql'
         schema_filter: ~(?<!_version)$~
         logging: false
       second:
-        # Second Connection
+        # second connection
         url: '%env(resolve:DATABASE_SECOND_URL)%'
         driver: 'pdo_mysql'
         schema_filter: ~(?<!_version)$~

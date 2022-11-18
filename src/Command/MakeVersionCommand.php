@@ -1,16 +1,14 @@
 <?php
+
 /**
  * NetBrothers VersionBundle
  *
  * @author Stefan Wessel, NetBrothers GmbH
  * @date 19.03.21
- *
  */
 
 namespace NetBrothers\VersionBundle\Command;
 
-
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\SchemaException;
 use Doctrine\ORM\EntityManagerInterface;
 use NetBrothers\VersionBundle\Services\CompareService;
@@ -18,6 +16,7 @@ use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -30,36 +29,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class MakeVersionCommand extends Command
 {
+    /** @inheritdoc */
     protected static $defaultName = 'netbrothers:version';
-
-    const HELP_TEXT=<<<EOF
-This command creates versions of database tables. Records are copied via triggers.
-
-All tables with a column named `version` (type INT/BIGINT) will get a version table called 
-`[originTableName]_version` with same columns of the originTable. Every originTable gets trigger, 
-which will increase the version column on insert/updates and saves a copy in the version table.
-
-You can specify as argument a single table name. If you do not specify a single table name as argument, this
-command will recognize every table - expected the configured tables to be ignored.
-
-If you do not use any option, the default behaviour is to create version tables and corresponding triggers.
-Also it will drop triggers on every table, which has no version table.             
-            
-
-Options:
-========
-
-create-trigger: Drop triggers, create necessary version tables, create triggers
-
-drop-trigger:   Drop triggers
-
-drop-version:   Drop triggers, drop version table(s) 
-
-summary:        Overview about things to do
-
-sql:            Overview of prepared SQL-Statements
-
-EOF;
 
     /** @var JobService */
     private $jobService;
@@ -79,69 +50,96 @@ EOF;
     /** @var EntityManagerInterface */
     private $entityManager;
 
-    /** @var AbstractSchemaManager|null */
-    private $schemaManager;
-
     /** configuration */
     protected function configure()
     {
         $this
-            ->setDescription('Create version-tables and MySQl-Trigger')
-            ->setHelp(self::HELP_TEXT)
+            ->setDescription('Create version tables and triggers.')
+            ->setHelp('See vendor/netbrothers-gmbh/version-bundle/README.md')
             ->addArgument(
                 'tableName',
                 InputArgument::OPTIONAL,
-                'Work only on this table')
+                'work only on this table'
+            )
             ->addOption(
                 'create-trigger',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Drop and create new trigger')
+                'drop triggers, create missing version tables, recreate triggers'
+            )
             ->addOption(
                 'drop-version',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Drop version table and trigger')
+                'drop triggers, drop version tables'
+            )
             ->addOption(
                 'drop-trigger',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Drop trigger')
+                'drop triggers'
+            )
             ->addOption(
                 'sql',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Print SQL-Statements to stdout'
+                'print the SQL statements without doing anything'
             )
             ->addOption(
                 'summary',
-                '',
+                null,
                 InputOption::VALUE_NONE,
-                'Print summary to stdout'
-            )
-        ;
+                'print a human readable summary of what the command would do'
+            );
     }
 
     /**
-     * MakeVersionCommand constructor.
-     * @param EntityManagerInterface $entityManager
-     * @param array $ignoreTables
-     * @param array $excludeColumnNames
-     * @throws \Exception
+     * @param null|EntityManagerInterface $entityManager 
+     * @param array $ignoreTables 
+     * @param array $excludeColumnNames 
+     * @param bool $initLater 
+     * @return void 
+     * @throws InvalidArgumentException 
      */
     public function __construct(
-        EntityManagerInterface $entityManager,
+        ?EntityManagerInterface $entityManager = null,
+        array $ignoreTables = [],
+        array $excludeColumnNames = [],
+        bool $initLater = false
+    ) {
+        parent::__construct();
+        if ($initLater) {
+            return;
+        }
+        $this->initCommand(
+            $entityManager,
+            $ignoreTables,
+            $excludeColumnNames
+        );
+    }
+
+    /**
+     * Method for an initialization after the command has been constructed.
+     * Needed for the standalone version.
+     * 
+     * @param EntityManagerInterface|null $entityManager
+     * @param array $ignoreTables
+     * @param array $excludeColumnNames
+     * @return void
+     */
+    protected function initCommand(
+        EntityManagerInterface $entityManager = null,
         array $ignoreTables = [],
         array $excludeColumnNames = []
-    ){
-        parent::__construct();
+    ) {
         $this->entityManager = $entityManager;
         $con = $this->entityManager->getConnection();
         $con->getConfiguration()->setSchemaAssetsFilter(null);
-        $this->schemaManager = $this->entityManager->getConnection()->getSchemaManager();
-        $compareService = new CompareService($this->schemaManager, $excludeColumnNames);
-        $this->jobService = new JobService($this->schemaManager, $compareService, $ignoreTables);
-        $this->generateService = new GenerateService($this->schemaManager, $con->getDatabase());
+        
+        $schemaManager = $con->createSchemaManager();
+        $compareService = new CompareService($schemaManager, $excludeColumnNames);
+        $this->jobService = new JobService($schemaManager, $compareService, $ignoreTables);
+        $this->generateService = new GenerateService($schemaManager, $con->getDatabase());
         $this->executeService = new ExecuteService($entityManager);
     }
 
@@ -200,8 +198,6 @@ EOF;
         }
         return $sql;
     }
-
-
 
     /** print report to stdout
      *
@@ -293,7 +289,7 @@ EOF;
         } else {
             $this->prepareSqlForAllTable($input);
         }
-        $io->newLine(2);
+        $io->newLine(1);
         $this->printStatistic($io, $input);
         $io->newLine(1);
         if ($input->getOption('summary')) {

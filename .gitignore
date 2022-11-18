@@ -14,3 +14,7 @@
 /phpunit.xml
 ###< symfony/phpunit-bridge ###
 /.idea
+
+###> Composer ###
+composer.lock
+###< Composer ###

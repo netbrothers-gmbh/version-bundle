@@ -1,25 +1,40 @@
 {
-  "name": "netbrothers-gmbh/version-bundle",
-  "description": "SymfonyBundle for handling versions based on triggers in mysql with doctrine",
-  "keywords": ["symfony","bundle","versioning","doctrine","mysql"],
-  "type": "symfony-bundle",
-  "require": {
-    "php": ">=7.4",
-    "symfony/console": "*",
-    "symfony/dotenv": "*",
-    "symfony/monolog-bundle": "*",
-    "symfony/orm-pack": "*"
-  },
-  "autoload": {
-    "psr-4": {
-      "NetBrothers\\VersionBundle\\": "src/"
-    }
-  },
-  "license": "MIT",
-  "authors": [
-    {
-      "name": "Stefan Wessel",
-      "email": "stefan.wessel@netbrothers.de"
-    }
-  ]
+    "name": "netbrothers-gmbh/version-bundle",
+    "description": "Trigger based version tables with MariaDB/MySQL and Doctrine",
+    "type": "symfony-bundle",
+    "keywords": [
+        "bundle",
+        "versioning",
+        "doctrine",
+        "mysql"
+    ],
+    "require": {
+        "php": ">=7.4",
+        "symfony/console": "*",
+        "doctrine/orm": "*"
+    },
+    "bin": [
+        "bin/netbrothers-version"
+    ],
+    "autoload": {
+        "psr-4": {
+            "NetBrothers\\VersionBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "NetBrothers\\VersionBundle\\Tests\\": "tests/"
+        }
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Stefan Wessel",
+            "email": "stefan.wessel@netbrothers.de"
+        },
+        {
+            "name": "Thilo Ratnaweera",
+            "email": "thilo.ratnaweera@netbrothers.de"
+        }
+    ]
 }

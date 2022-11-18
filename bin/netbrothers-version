@@ -1,0 +1,28 @@
+#!/usr/bin/env php
+<?php
+
+use NetBrothers\VersionBundle\Command\MakeVersionStandaloneCommand;
+use Symfony\Component\Console\Application;
+
+/**
+ * `__DIR__` represents `<project_dir>/vendor/netbrothers-gmbh/version-bundle/bin`,
+ * such that the three `/..` will neutralise `/netbrothers-gmbh/version-bundle/bin`
+ * and yield the project's `vendor` directory.
+ */
+
+$libModeAutoload = __DIR__ . '/../../../autoload.php';
+
+if (file_exists($libModeAutoload)) {
+    // used as a binary script of a composer package (vendor/bin/netbrothers-version)
+    require $libModeAutoload;
+} else {
+    // used entirely standalone (e.g. git clone)
+    require __DIR__ . '/../vendor/autoload.php';
+}
+
+$cliApp = new Application;
+$cliApp->setName('NetBrothers GmbH - MariaDB/MySQL versioning with triggers');
+$cliApp->setVersion('1.0.0');
+$cliApp->add(new MakeVersionStandaloneCommand);
+$cliApp->setDefaultCommand(MakeVersionStandaloneCommand::getDefaultName());
+$cliApp->run();
