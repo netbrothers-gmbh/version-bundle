@@ -1,4 +1,5 @@
 <?php
+
 /**
  * NetBrothers VersionBundle
  *
@@ -8,7 +9,6 @@
  */
 
 namespace NetBrothers\VersionBundle\Services;
-
 
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Schema;
@@ -96,7 +96,11 @@ class JobService
      * @param AbstractSchemaManager $schemaManager
      * @param array $ignoreTables
      */
-    public function __construct(AbstractSchemaManager $schemaManager, CompareService $compareService, array $ignoreTables = [])
+    public function __construct(
+        AbstractSchemaManager $schemaManager,
+        CompareService $compareService,
+        array $ignoreTables = []
+    )
     {
         $this->schemaManager = $schemaManager;
         $this->ignoreTables = $ignoreTables;
@@ -168,7 +172,6 @@ class JobService
         $tName = $versionTable->getName();
         $orgName = preg_replace("/" . Definitions::VERSION_TABLE_NAME_POSTFIX ."$/", '', $tName);
         return $this->schemaManager->tablesExist([$orgName]);
-
     }
 
     /**
@@ -238,16 +241,12 @@ class JobService
      */
     public function getOneTable(string $tableName): ?Table
     {
-        if (!$this->schemaManager->tablesExist([$tableName])) {
+        if (! $this->schemaManager->tablesExist([$tableName])) {
             return null;
         }
         if (is_null($this->schema)) {
-            $this->schema = $this->schemaManager->createSchema();
+            $this->schema = $this->schemaManager->introspectSchema();
         }
         return $this->schema->getTable($tableName);
     }
-
-
-
-
 }

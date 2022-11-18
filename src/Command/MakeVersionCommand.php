@@ -4,7 +4,6 @@
  * NetBrothers VersionBundle
  *
  * @author Stefan Wessel, NetBrothers GmbH
- * @date 19.03.21
  */
 
 namespace NetBrothers\VersionBundle\Command;
@@ -135,7 +134,6 @@ class MakeVersionCommand extends Command
         $this->entityManager = $entityManager;
         $con = $this->entityManager->getConnection();
         $con->getConfiguration()->setSchemaAssetsFilter(null);
-        
         $schemaManager = $con->createSchemaManager();
         $compareService = new CompareService($schemaManager, $excludeColumnNames);
         $this->jobService = new JobService($schemaManager, $compareService, $ignoreTables);
@@ -209,9 +207,9 @@ class MakeVersionCommand extends Command
         $errors = [];
         $warnings = [];
         foreach ($this->jobService->getReport() as $message) {
-            if (preg_match("/^ERROR/", $message)) {
+            if (preg_match('/^ERROR/', $message)) {
                 $errors[] = $message;
-            } elseif (preg_match("/^WARNING/", $message)) {
+            } elseif (preg_match('/^WARNING/', $message)) {
                 $warnings[] = $message;
             } else {
                 $io->writeln($message);
@@ -277,7 +275,7 @@ class MakeVersionCommand extends Command
             $this->setJobs($tableName);
         } catch (\Exception $exception) {
             $io->error($exception->getMessage());
-            return 1;
+            return Command::FAILURE;
         }
         $this->sql = [];
         if (null !== $tableName) {
@@ -302,14 +300,14 @@ class MakeVersionCommand extends Command
         if ($this->jobService->hasError()) {
             $this->printReport($io);
             $io->newLine(2);
-            $io->note("Operation canceled");
-            return 1;
+            $io->note('Operation canceled');
+            return Command::FAILURE;
         }
         $this->executeService->execute($this->sql);
         if ($this->jobService->hasWarning()) {
             $this->printReport($io);
         }
-        $io->success("Operation success");
-        return 0;
+        $io->success('Operation success');
+        return Command::SUCCESS;
     }
 }

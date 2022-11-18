@@ -128,26 +128,33 @@ class CompareService
      */
     private function compareOneColumn(Column $column, Column $compareColumn): bool
     {
-        $type = $column->getType()->getName();
-        $compareColumnType = $compareColumn->getType()->getName();
         $valid = true;
-        if ($type !== $compareColumnType) {
-            $this->errors[] = "different types";
+
+        // compare types
+        $columnType = $column->getType();
+        $compareColumnType = $compareColumn->getType();
+        if (! $columnType instanceof $compareColumnType) {
+            $this->errors[] = 'different types';
             $valid = false;
         }
+
+        // compare default values
         $defaultValue = $column->getDefault();
         $compareValue = $compareColumn->getDefault();
         if ($defaultValue !== $compareValue) {
-            $this->errors[] = "different default values ($defaultValue !=  $compareValue)";
+            $this->errors[] = sprintf(
+                'different default values (%s != %s)',
+                $defaultValue,
+                $compareValue
+            );
             $valid = false;
         }
-        $value = $column->getNotnull();
-        $compare = $compareColumn->getNotnull();
-        if ($value !== $compare) {
-            $this->errors[] = "different NULL-definition";
+
+        // compare NULL definition
+        if ($column->getNotnull() !== $compareColumn->getNotnull()) {
+            $this->errors[] = "different NULL definitions";
             $valid = false;
         }
         return $valid;
     }
-
 }
