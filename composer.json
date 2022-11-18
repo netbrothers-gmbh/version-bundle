@@ -1,7 +1,6 @@
 {
     "name": "netbrothers-gmbh/version-bundle",
     "description": "Trigger based version tables with MariaDB/MySQL and Doctrine",
-    "version": "1.0.0",
     "type": "symfony-bundle",
     "keywords": [
         "bundle",
