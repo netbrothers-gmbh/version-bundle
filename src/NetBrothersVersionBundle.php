@@ -21,9 +21,9 @@ class NetBrothersVersionBundle extends Bundle
 {
 
     /**
-     * @return false|NetBrothersVersionExtension|ExtensionInterface|null
+     * @return NetBrothersVersionExtension|ExtensionInterface|null
      */
-    public function getContainerExtension()
+    public function getContainerExtension(): ?ExtensionInterface
     {
         if (null === $this->extension) {
             $this->extension = new NetBrothersVersionExtension();

@@ -11,7 +11,6 @@ namespace NetBrothers\VersionBundle\Services\Sql;
 
 
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\ConnectionException;
 use Doctrine\DBAL\Driver\Exception as DriverException;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -58,17 +57,13 @@ class ExecuteService
             throw new \Exception(__CLASS__ . ': only sql-statements packed in array can be executed.');
         }
         if (0 < count($sql)) {
-            $this->connection->beginTransaction();
             try {
                 foreach ($sql as $query) {
                     if (true !== $this->_execute($query)) {
                         return false;
                     }
                 }
-                $this->connection->commit();
             } catch (\Exception $e) {
-                $this->connection->rollBack();
-                $this->connection->setAutoCommit(true);
                 throw new \Exception("Cannot commit", 500, $e);
             }
         }
@@ -78,20 +73,18 @@ class ExecuteService
     /**
      * @param string $query
      * @return bool
-     * @throws ConnectionException
-     * @throws DriverException
      * @throws \Doctrine\DBAL\Exception
      */
     private function _execute(string $query): bool
     {
-        $statement = $this->connection->prepare($query);
-        if (true !== $statement->execute()) {
-            $this->connection->rollBack();
-            $this->connection->setAutoCommit(true);
+        try {
+            $statement = $this->connection->prepare($query);
+            $result = $statement->executeQuery();
+            return true;
+        } catch ( DriverException $e) {
             $this->errMsg = "Cannot execute SQL: $query";
             return false;
         }
-        return true;
     }
 
 }
