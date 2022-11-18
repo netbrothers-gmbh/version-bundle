@@ -20,11 +20,9 @@ if (file_exists($libModeAutoload)) {
     require __DIR__ . '/../vendor/autoload.php';
 }
 
-// @todo SingleCommandApplication, once Symfony 5.1 is established.
 $cliApp = new Application;
 $cliApp->setName('NetBrothers GmbH - MariaDB/MySQL versioning with triggers');
-$cliApp->setVersion('0.0.2');
-$versionsCmd = new MakeVersionStandaloneCommand;
-$cliApp->addCommands([$versionsCmd]);
-$cliApp->setDefaultCommand($versionsCmd->getName());
+$cliApp->setVersion('1.0.0');
+$cliApp->add(new MakeVersionStandaloneCommand);
+$cliApp->setDefaultCommand(MakeVersionStandaloneCommand::getDefaultName());
 $cliApp->run();

@@ -9,7 +9,6 @@
 
 namespace NetBrothers\VersionBundle\Command;
 
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\SchemaException;
 use Doctrine\ORM\EntityManagerInterface;
 use NetBrothers\VersionBundle\Services\CompareService;
@@ -50,9 +49,6 @@ class MakeVersionCommand extends Command
 
     /** @var EntityManagerInterface */
     private $entityManager;
-
-    /** @var AbstractSchemaManager|null */
-    private $schemaManager;
 
     /** configuration */
     protected function configure()
@@ -110,8 +106,7 @@ class MakeVersionCommand extends Command
         array $ignoreTables = [],
         array $excludeColumnNames = [],
         bool $initLater = false
-    )
-    {
+    ) {
         parent::__construct();
         if ($initLater) {
             return;
@@ -132,19 +127,19 @@ class MakeVersionCommand extends Command
      * @param array $excludeColumnNames
      * @return void
      */
-    public function initCommand(
+    protected function initCommand(
         EntityManagerInterface $entityManager = null,
         array $ignoreTables = [],
         array $excludeColumnNames = []
-    )
-    {
+    ) {
         $this->entityManager = $entityManager;
         $con = $this->entityManager->getConnection();
         $con->getConfiguration()->setSchemaAssetsFilter(null);
-        $this->schemaManager = $this->entityManager->getConnection()->getSchemaManager();
-        $compareService = new CompareService($this->schemaManager, $excludeColumnNames);
-        $this->jobService = new JobService($this->schemaManager, $compareService, $ignoreTables);
-        $this->generateService = new GenerateService($this->schemaManager, $con->getDatabase());
+        
+        $schemaManager = $con->createSchemaManager();
+        $compareService = new CompareService($schemaManager, $excludeColumnNames);
+        $this->jobService = new JobService($schemaManager, $compareService, $ignoreTables);
+        $this->generateService = new GenerateService($schemaManager, $con->getDatabase());
         $this->executeService = new ExecuteService($entityManager);
     }
 

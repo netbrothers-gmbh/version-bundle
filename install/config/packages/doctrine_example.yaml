@@ -16,13 +16,13 @@ doctrine:
     default_connection: default
     connections:
       default:
-        # first Connection
+        # first connection
         url: '%env(resolve:DATABASE_URL)%'
         driver: 'pdo_mysql'
         schema_filter: ~(?<!_version)$~
         logging: false
       second:
-        # second Connection
+        # second connection
         url: '%env(resolve:DATABASE_SECOND_URL)%'
         driver: 'pdo_mysql'
         schema_filter: ~(?<!_version)$~
