@@ -36,9 +36,10 @@ class ExecuteService
     public function __construct(EntityManagerInterface $entityManager)
     {
         $platform = $entityManager->getConnection()->getDatabasePlatform();
-        if (! in_array($platform, self::SUPPORTED_PLATFORMS)) {
+        if (! in_array(get_class($platform), self::SUPPORTED_PLATFORMS)) {
             echo sprintf(
-                'WARNING: Unsupported database platform: %s', $platform::class
+                'WARNING: Unsupported database platform: %s',
+                get_class($platform)
             ) . PHP_EOL;
         }
         $this->connection = $entityManager->getConnection();
