@@ -15,7 +15,7 @@ trait VersionColumn
     /**
      * @ORM\Column(type="integer", nullable=false, options={"default": 1})
      */
-    #[ORM\Column(type: 'integer', nullable: false, options: [ 'default' => 1])]
+    #[ORM\Column(type: 'integer', nullable: false, options: ['default' => 1])]
     private int $version = 1;
 
     public function getVersion(): int
