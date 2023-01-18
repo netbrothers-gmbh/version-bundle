@@ -1,10 +1,9 @@
 <?php
+
 /**
  * NetBrothers VersionBundle
  *
  * @author Stefan Wessel, NetBrothers GmbH
- * @date 16.03.21
- *
  */
 
 namespace NetBrothers\VersionBundle\DependencyInjection;
@@ -14,13 +13,8 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 
-/**
- * Class NetBrothersVersionExtension
- * @package NetBrothers\VersionBundle\DependencyInjection
- */
 class NetBrothersVersionExtension extends Extension
 {
-
     /**
      * Loads a specific configuration.
      *
@@ -30,7 +24,10 @@ class NetBrothersVersionExtension extends Extension
      */
     public function load(array $configs, ContainerBuilder $container)
     {
-        $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . "/../Resources/config"));
+        $loader = new XmlFileLoader(
+            $container,
+            new FileLocator(__DIR__ . '/../Resources/config')
+        );
         $loader->load('services.xml');
         $configuration = $this->getConfiguration($configs, $container);
         $config = $this->processConfiguration($configuration, $configs);
@@ -39,9 +36,8 @@ class NetBrothersVersionExtension extends Extension
         $commandMakeVersion->setArgument(2, $config['ignore_columns']);
     }
 
-    public function getAlias()
+    public function getAlias(): string
     {
         return 'netbrothers_version';
     }
-
 }

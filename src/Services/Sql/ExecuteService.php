@@ -10,6 +10,7 @@ namespace NetBrothers\VersionBundle\Services\Sql;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Platforms\MariaDb1027Platform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\ORM\EntityManagerInterface;
@@ -22,6 +23,7 @@ use Doctrine\ORM\EntityManagerInterface;
 class ExecuteService
 {
     private const SUPPORTED_PLATFORMS = [
+        MariaDb1027Platform::class, // @todo remove when merged (Doctrine DBAL 4.0)
         MariaDBPlatform::class,
         MySQLPlatform::class,
     ];
