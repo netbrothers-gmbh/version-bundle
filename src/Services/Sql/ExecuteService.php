@@ -12,6 +12,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Platforms\MariaDb1027Platform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
+use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -26,6 +27,7 @@ class ExecuteService
         MariaDb1027Platform::class, // @todo remove when merged (Doctrine DBAL 4.0)
         MariaDBPlatform::class,
         MySQLPlatform::class,
+        MySQL80Platform::class,
     ];
 
     private Connection $connection;
