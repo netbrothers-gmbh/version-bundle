@@ -147,8 +147,9 @@ class MakeVersionCommand extends Command
      */
     private function setJobs(string $tableName = null): void
     {
-        $this->jobs = (null !== $tableName) ?
-            $this->jobService->getJobForOneTable($tableName) : $this->jobService->getJobsForAllTables();
+        $this->jobs = (null !== $tableName)
+            ? $this->jobService->getJobForOneTable($tableName)
+            : $this->jobService->getJobsForAllTables();
     }
 
     /**
@@ -172,9 +173,9 @@ class MakeVersionCommand extends Command
     private function prepareSqlForOneTable(string $tableName, InputInterface $input): array
     {
         $sql = [];
-        if ( $input->getOption('drop-version')) { //explicit drop!
+        if ($input->getOption('drop-version')) { //explicit drop!
             $sql = $this->generateService->dropVersionTableAndTriggersInOriginTable($tableName);
-        } elseif ($input->getOption('drop-trigger') ) { // explicit drop!
+        } elseif ($input->getOption('drop-trigger')) { // explicit drop!
             $sql = $this->generateService->dropTriggers($tableName);
         } else { // default
             if (in_array($tableName, $this->jobs['DropTrigger'])) {
@@ -215,10 +216,10 @@ class MakeVersionCommand extends Command
                 $io->writeln($message);
             }
         }
-        if ( 0 < count($warnings)) {
+        if (0 < count($warnings)) {
             $io->warning(implode(PHP_EOL, $errors));
         }
-        if ( 0 < count($errors)) {
+        if (0 < count($errors)) {
             $io->error(implode(PHP_EOL, $errors));
         }
         return 0;
@@ -249,7 +250,10 @@ class MakeVersionCommand extends Command
         $countCreateVersions = count($this->jobs['CreateVersion']);
         $countCreateTriggers = count($this->jobs['CreateTrigger']);
         $io->writeln("Handling $countTables tables:");
-        if ( $input->getOption('drop-version') || $input->getOption('drop-trigger')) {
+        if (
+            $input->getOption('drop-version')
+            || $input->getOption('drop-trigger')
+        ) {
             $io->writeln("Drop Versions $countDropVersions");
             $io->writeln("Drop Triggers $countDropTriggers");
             return;
