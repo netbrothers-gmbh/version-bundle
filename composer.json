@@ -2,31 +2,6 @@
     "name": "netbrothers-gmbh/version-bundle",
     "description": "Trigger based version tables with MariaDB/MySQL and Doctrine",
     "type": "symfony-bundle",
-    "keywords": [
-        "bundle",
-        "versioning",
-        "doctrine",
-        "mysql"
-    ],
-    "require": {
-        "php": ">=7.4",
-        "symfony/console": "*",
-        "doctrine/orm": "*",
-        "doctrine/dbal": "^3.5"
-    },
-    "bin": [
-        "bin/netbrothers-version"
-    ],
-    "autoload": {
-        "psr-4": {
-            "NetBrothers\\VersionBundle\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "NetBrothers\\VersionBundle\\Tests\\": "tests/"
-        }
-    },
     "license": "MIT",
     "authors": [
         {
@@ -38,8 +13,38 @@
             "email": "thilo.ratnaweera@netbrothers.de"
         }
     ],
+    "keywords": [
+        "bundle",
+        "database",
+        "versioning",
+        "doctrine",
+        "mysql",
+        "mariadb"
+    ],
+    "require": {
+        "php": ">=7.4",
+        "symfony/console": "*",
+        "doctrine/orm": "*",
+        "doctrine/dbal": "^3.5"
+    },
     "require-dev": {
         "phpstan/phpstan": "^1.9",
         "phpstan/phpstan-deprecation-rules": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "NetBrothers\\VersionBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "NetBrothers\\VersionBundle\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/netbrothers-version"
+    ],
+    "scripts": {
+        "static-analysis": "[ $COMPOSER_DEV_MODE -eq 0 ] || phpstan"
     }
 }
