@@ -217,7 +217,7 @@ class MakeVersionCommand extends Command
             }
         }
         if (0 < count($warnings)) {
-            $io->warning(implode(PHP_EOL, $errors));
+            $io->warning(implode(PHP_EOL, $warnings));
         }
         if (0 < count($errors)) {
             $io->error(implode(PHP_EOL, $errors));
