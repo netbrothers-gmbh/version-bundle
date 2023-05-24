@@ -158,7 +158,7 @@ class JobService
             $error = "Table $tableName does not exists";
             throw new \Exception($error);
         }
-        $schema = $this->schemaManager->createSchema();
+        $schema = $this->schemaManager->introspectSchema();
         $this->findJobForTable($schema->getTable($tableName));
         return $this->jobs;
     }

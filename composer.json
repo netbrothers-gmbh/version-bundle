@@ -11,7 +11,8 @@
     "require": {
         "php": ">=7.4",
         "symfony/console": "*",
-        "doctrine/orm": "*"
+        "doctrine/orm": "*",
+        "doctrine/dbal": "^3.5"
     },
     "bin": [
         "bin/netbrothers-version"
