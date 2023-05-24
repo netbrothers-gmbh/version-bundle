@@ -1,3 +1,5 @@
+![build status](https://github.com/netbrothers-gmbh/version-bundle/actions/workflows/build.yml/badge.svg)
+
 # NetBrothers Version Bundle
 
 This hybrid package works as a [Symfony bundle](https://symfony.com/doc/current/bundles.html)
