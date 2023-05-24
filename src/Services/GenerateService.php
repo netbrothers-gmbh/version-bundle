@@ -1,14 +1,12 @@
 <?php
+
 /**
  * NetBrothers VersionBundle
  *
  * @author Stefan Wessel, NetBrothers GmbH
- * @date 22.03.21
- *
  */
 
 namespace NetBrothers\VersionBundle\Services;
-
 
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use NetBrothers\VersionBundle\Services\Sql\CreateTrigger;
@@ -22,7 +20,6 @@ use NetBrothers\VersionBundle\Services\Sql\VersionTable;
  */
 class GenerateService
 {
-
     /** @var AbstractSchemaManager */
     private $schemaManager;
 
@@ -34,8 +31,10 @@ class GenerateService
      * @param AbstractSchemaManager $schemaManager
      * @param string $databaseName
      */
-    public function __construct(AbstractSchemaManager $schemaManager, string $databaseName)
-    {
+    public function __construct(
+        AbstractSchemaManager $schemaManager,
+        string $databaseName
+    ) {
         $this->schemaManager = $schemaManager;
         $this->databaseName = $databaseName;
     }
@@ -55,7 +54,10 @@ class GenerateService
             $sql = $this->dropTriggers($tableName);
             // dropping version
             $versionService = new VersionTable();
-            $sql[] = $versionService->dropVersionTable($this->databaseName, $tableName);
+            $sql[] = $versionService->dropVersionTable(
+                $this->databaseName,
+                $tableName
+            );
         }
         return $sql;
     }
@@ -78,7 +80,7 @@ class GenerateService
      * @param string $tableName name of origin table
      * @return array
      */
-    public function createVersion(string $tableName): array
+    public function createVersionAndTriggers(string $tableName): array
     {
         $sql = [];
         if ($this->schemaManager->tablesExist([$tableName])) {

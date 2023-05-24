@@ -184,12 +184,15 @@ class MakeVersionCommand extends Command
                 }
             }
             if (in_array($tableName, $this->jobs['CreateVersion'])) {
-                foreach ($this->generateService->createVersion($tableName) as $query) {
+                foreach ($this->generateService->createVersionAndTriggers($tableName) as $query) {
                     $sql[] = $query;
                 }
-                return $sql;
-            }
-            if (in_array($tableName, $this->jobs['CreateTrigger'])) {
+            /**
+             * The `CreateVersion` job will create the version table and also
+             * the triggers. That's why the the `CreateTrigger` job is never
+             * available, if a `CreateVersion` job is set: hence, the `else if`.
+             */
+            } else if (in_array($tableName, $this->jobs['CreateTrigger'])) {
                 foreach ($this->generateService->createTriggers($tableName) as $query) {
                     $sql[] = $query;
                 }
