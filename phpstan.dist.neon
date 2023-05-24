@@ -1,4 +1,9 @@
 parameters:
-    level: 1
+    level: 4
+    excludePaths:
+        analyseAndScan:
+            - src/NetBrothersVersionBundle.php
+            - src/DependencyInjection/*
+
 includes:
     - vendor/phpstan/phpstan-deprecation-rules/rules.neon

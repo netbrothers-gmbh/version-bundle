@@ -24,7 +24,11 @@ use Doctrine\ORM\EntityManagerInterface;
 class ExecuteService
 {
     private const SUPPORTED_PLATFORMS = [
-        MariaDb1027Platform::class, // @todo remove when merged (Doctrine DBAL 4.0)
+        /**
+         * @todo Remove `MariaDb1027Platform` when merged (Doctrine DBAL 4.0).
+         * @phpstan-ignore-next-line
+         */
+        MariaDb1027Platform::class,
         MariaDBPlatform::class,
         MySQLPlatform::class,
         MySQL80Platform::class,

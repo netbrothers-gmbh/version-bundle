@@ -135,7 +135,7 @@ class MakeVersionCommand extends Command
         $con = $this->entityManager->getConnection();
         $con->getConfiguration()->setSchemaAssetsFilter(null);
         $schemaManager = $con->createSchemaManager();
-        $compareService = new CompareService($schemaManager, $excludeColumnNames);
+        $compareService = new CompareService($excludeColumnNames);
         $this->jobService = new JobService($schemaManager, $compareService, $ignoreTables);
         $this->generateService = new GenerateService($schemaManager, $con->getDatabase());
         $this->executeService = new ExecuteService($entityManager);

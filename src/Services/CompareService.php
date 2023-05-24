@@ -1,48 +1,38 @@
 <?php
+
 /**
  * NetBrothers VersionBundle
  *
  * @author Stefan Wessel, NetBrothers GmbH
- * @date 19.03.21
- *
  */
 
 namespace NetBrothers\VersionBundle\Services;
 
-
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\SchemaException;
 use Doctrine\DBAL\Schema\Table;
 
-/** check if column definitions are the same in both tables
- * Class CompareService
+/**
+ * Provides check, if column definitions are identical in two tables.
+ * 
  * @package NetBrothers\VersionBundle\Services
  */
 class CompareService
 {
-    /**
-     * @var AbstractSchemaManager
-     */
-    private $schemaManager;
+    /** @var string[]  */
+    private array $errors = [];
 
-    /** @var array  */
-    private $errors = [];
-
-    /** @var null|string */
-    private $errMessage = null;
+    private ?string $errMessage = null;
 
     /** @var string[]  */
-    private $excludeColumnNames = ['id', 'version', 'created_at', 'updated_at'];
+    private array $excludeColumnNames = ['id', 'version', 'created_at', 'updated_at'];
 
     /**
      * CompareService constructor.
-     * @param AbstractSchemaManager $schemaManager
      * @param array|null $excludeColumnNames columns should not be compared
      */
-    public function __construct(AbstractSchemaManager $schemaManager, array $excludeColumnNames = null)
+    public function __construct(?array $excludeColumnNames = null)
     {
-        $this->schemaManager = $schemaManager;
         if (is_array($excludeColumnNames) && 0 < count($excludeColumnNames)) {
             $this->excludeColumnNames = $excludeColumnNames;
         }

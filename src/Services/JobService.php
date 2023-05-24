@@ -100,9 +100,9 @@ class JobService
         AbstractSchemaManager $schemaManager,
         CompareService $compareService,
         array $ignoreTables = []
-    )
-    {
+    ) {
         $this->schemaManager = $schemaManager;
+        $this->schema = $schemaManager->introspectSchema();
         $this->ignoreTables = $ignoreTables;
         $this->definitionService = new Definitions();
         $this->compareService = $compareService;
@@ -154,12 +154,11 @@ class JobService
             return $this->jobs;
         }
         $tableNames = $this->schemaManager->listTableNames();
-        if (! in_array($tableName, $tableNames)) {
+        if (!in_array($tableName, $tableNames)) {
             $error = "Table $tableName does not exists";
             throw new \Exception($error);
         }
-        $schema = $this->schemaManager->introspectSchema();
-        $this->findJobForTable($schema->getTable($tableName));
+        $this->findJobForTable($this->schema->getTable($tableName));
         return $this->jobs;
     }
 
@@ -170,7 +169,7 @@ class JobService
     private function originTableExists(Table $versionTable): bool
     {
         $tName = $versionTable->getName();
-        $orgName = preg_replace("/" . Definitions::VERSION_TABLE_NAME_POSTFIX ."$/", '', $tName);
+        $orgName = preg_replace("/" . Definitions::VERSION_TABLE_NAME_POSTFIX . "$/", '', $tName);
         return $this->schemaManager->tablesExist([$orgName]);
     }
 
@@ -183,7 +182,7 @@ class JobService
     {
         $tName = $table->getName();
         $versionTable = $this->getVersionTableFromOrigin($table);
-        if (null === $versionTable) { //no table version
+        if (null === $versionTable) { // no version table
             if (true === $this->definitionService->hasTableVersionColumn($table)) {
                 $this->jobs['Reports'][] = "$tName: Drop triggers, create version table, create triggers";
                 $this->jobs['DropTrigger'][] = $tName;
@@ -207,7 +206,8 @@ class JobService
             }
             // compare not nice!
             $this->error = true;
-            $this->jobs['Reports'][] = "ERROR $tName: " . $this->compareService->getErrMessage();
+            $compareErr = $this->compareService->getErrMessage() ?? '';
+            $this->jobs['Reports'][] = "ERROR $tName: " . $compareErr;
             $this->jobs['Reports'][] = "$tName: Drop triggers";
             $this->jobs['DropTrigger'][] = $tName;
             return false;
@@ -224,29 +224,13 @@ class JobService
      * @return Table|null
      * @throws SchemaException
      */
-    public function getVersionTableFromOrigin(Table $table): ?Table
+    private function getVersionTableFromOrigin(Table $table): ?Table
     {
         $tName = $table->getName();
         $versionTableName = $tName . Definitions::VERSION_TABLE_NAME_POSTFIX;
         if ($this->schemaManager->tablesExist([$versionTableName])) {
-            return $this->getOneTable($versionTableName);
+            return $this->schema->getTable($versionTableName);
         }
         return null;
-    }
-
-    /**
-     * @param string $tableName
-     * @return Table|null
-     * @throws SchemaException
-     */
-    public function getOneTable(string $tableName): ?Table
-    {
-        if (! $this->schemaManager->tablesExist([$tableName])) {
-            return null;
-        }
-        if (is_null($this->schema)) {
-            $this->schema = $this->schemaManager->introspectSchema();
-        }
-        return $this->schema->getTable($tableName);
     }
 }
