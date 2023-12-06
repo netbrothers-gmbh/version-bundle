@@ -15,6 +15,7 @@ use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,28 +27,28 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Class MakeVersionCommand
  * @package NetBrothers\VersionBundle\Command
  */
+#[AsCommand(
+    name: 'netbrothers:version',
+    description: 'Create version tables and triggers.',
+)]
 class MakeVersionCommand extends Command
 {
     /** @inheritdoc */
     protected static $defaultName = 'netbrothers:version';
 
-    /** @var JobService */
-    private $jobService;
+    private JobService $jobService;
 
-    /** @var GenerateService */
-    private $generateService;
+    private GenerateService $generateService;
 
-    /** @var array */
-    private $sql = [];
+    /** @var array<int, string> */
+    private array $sql = [];
 
     /** @var array  */
-    private $jobs = [];
+    private array $jobs = [];
 
-    /** @var ExecuteService */
-    private $executeService;
+    private ExecuteService $executeService;
 
-    /** @var EntityManagerInterface */
-    private $entityManager;
+    private EntityManagerInterface $entityManager;
 
     /** configuration */
     protected function configure()
@@ -93,20 +94,16 @@ class MakeVersionCommand extends Command
     }
 
     /**
-     * @param null|EntityManagerInterface $entityManager 
-     * @param array $ignoreTables 
-     * @param array $excludeColumnNames 
-     * @param bool $initLater 
-     * @return void 
-     * @throws InvalidArgumentException 
+     * @throws InvalidArgumentException
      */
     public function __construct(
         ?EntityManagerInterface $entityManager = null,
         array $ignoreTables = [],
         array $excludeColumnNames = [],
-        bool $initLater = false
+        bool $initLater = false,
+        string $name = null
     ) {
-        parent::__construct();
+        parent::__construct($name);
         if ($initLater) {
             return;
         }
@@ -130,7 +127,8 @@ class MakeVersionCommand extends Command
         EntityManagerInterface $entityManager = null,
         array $ignoreTables = [],
         array $excludeColumnNames = []
-    ) {
+    ): void
+    {
         $this->entityManager = $entityManager;
         $con = $this->entityManager->getConnection();
         $con->getConfiguration()->setSchemaAssetsFilter(null);
