@@ -22,8 +22,8 @@
         "mariadb"
     ],
     "require": {
-        "php": ">=7.4",
-        "symfony/console": "*",
+        "php": ">=8.1",
+        "symfony/console": ">=6 <7",
         "doctrine/orm": "*",
         "doctrine/dbal": "^3.5"
     },
@@ -34,11 +34,6 @@
     "autoload": {
         "psr-4": {
             "NetBrothers\\VersionBundle\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "NetBrothers\\VersionBundle\\Tests\\": "tests/"
         }
     },
     "bin": [

@@ -1,6 +1,14 @@
 Changelog for NetBrothers Versions 
 ===================================
 
+Version 2.0.0 - 06.12.2023
+----------------------------------
+- Fixing Deprecated Since symfony/console 6.1: Relying on the static property "$defaultName" 
+for setting a command name is deprecated.
+- updated symfony requirements to >=6 <7
+- updated php requirements to >=8.1
+- Upgrading Version-Number to 2.0.0
+
 Version 0.0.4 - 18.02.2022
 ----------------------------------
 - Fixing Bug "There is no active transaction".
