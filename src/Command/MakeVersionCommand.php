@@ -272,7 +272,7 @@ class MakeVersionCommand extends Command
      * @throws \Doctrine\DBAL\ConnectionException
      * @throws \Doctrine\DBAL\Driver\Exception
      */
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $tableName = $input->getArgument('tableName');

@@ -55,7 +55,7 @@ final class MakeVersionStandaloneCommand extends MakeVersionCommand
         parent::__construct(null, [], [], $initLater);
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->initEntityManager($input);
         parent::initCommand(
