@@ -1,6 +1,12 @@
 Changelog for NetBrothers Versions 
 ===================================
 
+Version 3.0.0 - 29.05.2024
+----------------------------------
+- updated symfony requirements to >=7 <8
+- updated php requirements to >=8.2
+- Upgrading Version-Number to 3.0.0
+
 Version 2.0.0 - 06.12.2023
 ----------------------------------
 - Fixing Deprecated Since symfony/console 6.1: Relying on the static property "$defaultName" 
