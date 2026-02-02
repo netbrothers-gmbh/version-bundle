@@ -1,36 +1,38 @@
 <?php
-/**
- * NetBrothers VersionBundle
+
+declare(strict_types=1);
+
+/*
+ * This file is part of the NetBrothers VersionBundle.
  *
- * @author Stefan Wessel, NetBrothers GmbH
- * @date 19.03.21
+ * (c) 2021 NetBrothers GmbH | Thilo Ratnaweera & Stefan Wessel (https://netbrothers.de)
  *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
  */
 
 namespace NetBrothers\VersionBundle\Services\Sql;
 
-
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
+use Doctrine\ORM\EntityManagerInterface;
 
-/** generating sql for creating triggers
- *
- * Class CreateTrigger
- * @package NetBrothers\VersionBundle\Services\Sql
+/**
+ * generating sql for creating triggers
  */
-class CreateTrigger extends Definitions
+final class CreateTrigger
 {
-
-
-    /** @var AbstractSchemaManager */
-    private $schemaManager;
+    private AbstractSchemaManager $schemaManager;
+    private AbstractPlatform $platform;
 
     /** @var string CREATE DEFINER = CURRENT_USER TRIGGER db.table_%s */
-    private $fCreateSql;
+    private string $fCreateSql;
 
     /** @var string INSERT INTO (...) VALUES (...) */
-    private $triggerBody;
+    private string $triggerBody;
 
-    private $fTriggerSql=<<<EOF
+    private string $fTriggerSql = <<<EOF
 %s %s ON `%s` 
 FOR EACH ROW
 BEGIN
@@ -39,26 +41,24 @@ END
 
 EOF;
 
-
     /**
-     * CreateTriggers constructor.
-     * @param AbstractSchemaManager $schemaManager
+     * @throws Exception
      */
-    public function __construct(AbstractSchemaManager $schemaManager)
+    public function __construct(private readonly EntityManagerInterface $entityManager)
     {
-        $this->schemaManager = $schemaManager;
+        $connection = $this->entityManager->getConnection();
+        $this->schemaManager = $connection->createSchemaManager();
+        $this->platform = $connection->getDatabasePlatform();
     }
 
     /**
      * creating sql for insert triggers in one table
-     *
-     * @param string $databaseName
-     * @param string $tableName
-     * @return array
+     * @return string[]
+     * @throws Exception
      */
     public function getSql(string $databaseName, string $tableName): array
     {
-        $versionTableName = $tableName . parent::VERSION_TABLE_NAME_POSTFIX;
+        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
         $this->setTriggerBody($databaseName, $tableName, $versionTableName);
         $this->setFCreateSql($databaseName, $tableName);
         $sql = [];
@@ -77,13 +77,10 @@ EOF;
 
     /**
      * creating trigger "setting version to int 1 before insert"
-     *
-     * @param string $tableName
-     * @return string
      */
     private function createTriggerBeforeInsert(string $tableName): string
     {
-        $triggerName = parent::TRIGGER_NAME_BEFORE_INSERT_SET_VERSION;
+        $triggerName = Definitions::TRIGGER_NAME_BEFORE_INSERT_SET_VERSION;
         $createStatement = sprintf($this->fCreateSql, $triggerName);
         $eventStatement = "BEFORE INSERT";
         $triggerBody = "SET NEW.version = 1;";
@@ -92,13 +89,10 @@ EOF;
 
     /**
      * creating trigger "create first entry in table version"
-     *
-     * @param string $tableName
-     * @return string
      */
     private function createTriggerAfterInsert(string $tableName): string
     {
-        $triggerName = parent::TRIGGER_NAME_AFTER_INSERT_INSERT_VERSION;
+        $triggerName = Definitions::TRIGGER_NAME_AFTER_INSERT_INSERT_VERSION;
         $createStatement = sprintf($this->fCreateSql, $triggerName);
         $eventStatement = "AFTER INSERT";
         return sprintf($this->fTriggerSql, $createStatement, $eventStatement, $tableName, $this->triggerBody);
@@ -106,13 +100,10 @@ EOF;
 
     /**
      * creating trigger "increment column version before update"
-     *
-     * @param string $tableName
-     * @return string
      */
     private function createTriggerBeforeUpdate(string $tableName): string
     {
-        $triggerName = parent::TRIGGER_NAME_BEFORE_UPDATE_SET_VERSION;
+        $triggerName = Definitions::TRIGGER_NAME_BEFORE_UPDATE_SET_VERSION;
         $createStatement = sprintf($this->fCreateSql, $triggerName);
         $eventStatement = "BEFORE UPDATE";
         $triggerBody = "SET NEW.version = OLD.version+1;";
@@ -121,32 +112,27 @@ EOF;
 
     /**
      * insert version to version table by update
-     *
-     * @param string $tableName
-     * @return string
      */
     private function createTriggerAfterUpdate(string $tableName): string
     {
-        $triggerName = parent::TRIGGER_NAME_AFTER_UPDATE_INSERT_VERSION;
+        $triggerName = Definitions::TRIGGER_NAME_AFTER_UPDATE_INSERT_VERSION;
         $createStatement = sprintf($this->fCreateSql, $triggerName);
         $eventStatement = "AFTER UPDATE";
         return sprintf($this->fTriggerSql, $createStatement, $eventStatement, $tableName, $this->triggerBody);
     }
 
     /**
-     * @param string $databaseName
-     * @param string $tableName
-     * @param string $versionTableName
+     * @throws Exception
      */
     private function setTriggerBody(string $databaseName, string $tableName, string $versionTableName): void
     {
-        $tableColumns = $this->schemaManager->listTableColumns($tableName, $databaseName);
+        $tableColumns = $this->schemaManager->introspectTableByUnquotedName($tableName)->getColumns();
         $columnNames = [];
         $values = [];
         foreach ($tableColumns as $column) {
-            $colName = $column->getName();
-            $columnNames[] = "`$colName`";
-            $values[] = "NEW." . $colName;
+            $quotedColName = $column->getObjectName()->toSQL($this->platform);
+            $columnNames[] = $quotedColName;
+            $values[] = "NEW." . $quotedColName;
         }
         $stringColumnNames = "(" . implode(",", $columnNames) . ")";
         $stringValues = "(" . implode(",", $values) . ")";
