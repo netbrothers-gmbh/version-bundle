@@ -35,7 +35,13 @@ final class JobService
      *      'Reports': string[],
      * }
      */
-    private array $jobs = [];
+    private array $jobs = [
+        'DropTrigger' => [],
+        'CreateTrigger' => [],
+        'DropVersion' => [],
+        'CreateVersion' => [],
+        'Reports' => [],
+    ];
 
     /** @var string[] */
     private array $tableNames = [];
