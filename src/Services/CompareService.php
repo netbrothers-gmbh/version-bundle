@@ -80,7 +80,7 @@ final class CompareService
     private function getColumn(Table $table, string $columnName): ?Column
     {
         if (!$table->hasColumn($columnName)) {
-            $this->errors[] = $columnName . ' does not exist in table ' . $table->getName();
+            $this->errors[] = $columnName . ' does not exist in table ' . $table->getObjectName()->toString();
             return null;
         }
         try {
