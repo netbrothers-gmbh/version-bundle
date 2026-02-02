@@ -1,9 +1,17 @@
 Changelog for NetBrothers Versions 
 ===================================
 
+Version 4.0.0 - 02.02.2026
+----------------------------------
+- refactoring for Symfony 7.4 and Symfony 8
+- updated php requirements to >=8.4
+- updated documentation
+- [BC BREAK] All service and command classes are now marked as `final`.
+- Upgrading Version-Number to 4.0.0
+
 Version 3.0.0 - 29.05.2024
 ----------------------------------
-- updated symfony requirements to >=7 <8
+- updated Symfony requirements to >=7 <8
 - updated php requirements to >=8.2
 - Upgrading Version-Number to 3.0.0
 
@@ -11,7 +19,7 @@ Version 2.0.0 - 06.12.2023
 ----------------------------------
 - Fixing Deprecated Since symfony/console 6.1: Relying on the static property "$defaultName" 
 for setting a command name is deprecated.
-- updated symfony requirements to >=6 <7
+- updated Symfony requirements to >=6 <7
 - updated php requirements to >=8.1
 - Upgrading Version-Number to 2.0.0
 

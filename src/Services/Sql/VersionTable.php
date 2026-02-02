@@ -1,86 +1,45 @@
 <?php
-/**
- * NetBrothers VersionBundle
+
+declare(strict_types=1);
+
+/*
+ * This file is part of the NetBrothers VersionBundle.
  *
- * @author Stefan Wessel, NetBrothers GmbH
- * @date 19.03.21
+ * (c) 2021 NetBrothers GmbH | Thilo Ratnaweera & Stefan Wessel (https://netbrothers.de)
  *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
  */
 
 namespace NetBrothers\VersionBundle\Services\Sql;
 
-/** drop / create version table
- *
- * Class VersionTable
- * @package NetBrothers\VersionBundle\Services\Sql
+/**
+ * Generates SQL for dropping/creating version tables.
  */
-class VersionTable extends Definitions
+final class VersionTable
 {
-
-    /** @var string name of version table */
-    private $version = '';
-
-    /** @var string name of origin table */
-    private $table = '';
-
-    /** @var string name of database */
-    private $database = '';
-
-    /** drop version table and create new
+    /**
+     * Returns all SQL statements needed to create a version table with its constraints.
      *
-     * @param string $databaseName
-     * @param string $tableName
-     * @return array
+     * @return string[]
      */
     public function getSqlCreate(string $databaseName, string $tableName): array
     {
-        $this->version = $tableName . parent::VERSION_TABLE_NAME_POSTFIX;
-        $this->table = $tableName;
-        $this->database = $databaseName;
-        $sql = [];
-        $sql[] = $this->sqlCreate();
-        $sql[] = $this->sqlPk();
-        $sql[] = $this->sqlConstraint();
-        return $sql;
+        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
 
+        return [
+            sprintf(Definitions::SQL_CREATE_TABLE, $databaseName, $versionTableName, $databaseName, $tableName),
+            sprintf(Definitions::SQL_ADD_PK_TO_VERSION, $databaseName, $versionTableName),
+            sprintf(Definitions::SQL_ADD_CONSTRAINT, $databaseName, $versionTableName, $versionTableName, $tableName),
+        ];
     }
 
-    /** drop version table
-     *
-     * @param string $databaseName
-     * @param string $tableName
-     * @return string
+    /**
+     * Returns the SQL statement to drop a version table.
      */
     public function dropVersionTable(string $databaseName, string $tableName): string
     {
-        $this->version = $tableName . parent::VERSION_TABLE_NAME_POSTFIX;
-        $this->database = $databaseName;
-        return sprintf(parent::SQL_DROP_TABLE, $this->database, $this->version);
+        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
+        return sprintf(Definitions::SQL_DROP_TABLE, $databaseName, $versionTableName);
     }
-
-    /**
-     * @return string
-     */
-    private function sqlCreate(): string
-    {
-        return sprintf(parent::SQL_CREATE_TABLE, $this->database, $this->version, $this->database, $this->table);
-    }
-
-    /**
-     * @return string
-     */
-    private function sqlPk(): string
-    {
-        return sprintf(parent::SQL_ADD_PK_TO_VERSION, $this->database, $this->version);
-    }
-
-    /**
-     * @return string
-     */
-    private function sqlConstraint(): string
-    {
-        return sprintf(parent::SQL_ADD_CONSTRAINT, $this->database, $this->version, $this->version, $this->table);
-    }
-
-
 }

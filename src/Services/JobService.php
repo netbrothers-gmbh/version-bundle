@@ -1,85 +1,82 @@
 <?php
 
-/**
- * NetBrothers VersionBundle
+declare(strict_types=1);
+
+/*
+ * This file is part of the NetBrothers VersionBundle.
  *
- * @author Stefan Wessel, NetBrothers GmbH
- * @date 19.03.21
+ * (c) 2021 NetBrothers GmbH | Thilo Ratnaweera & Stefan Wessel (https://netbrothers.de)
  *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
  */
 
 namespace NetBrothers\VersionBundle\Services;
 
+use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\SchemaException;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\ORM\EntityManagerInterface;
 use NetBrothers\VersionBundle\Services\Sql\Definitions;
 
-/**
- * Class JobService
- * @package NetBrothers\VersionBundle\Services
- */
-class JobService
+final class JobService
 {
-    /** @var array tables which should not be recognized */
-    private $ignoreTables;
+    /** @var string[] */
+    private array $ignoreTables;
 
-    /** @var array  */
-    private $jobs = [];
+    /**
+     * @var array{
+     *      'DropTrigger': string[],
+     *      'CreateTrigger': string[],
+     *      'DropVersion': string[],
+     *      'CreateVersion': string[],
+     *      'Reports': string[],
+     * }
+     */
+    private array $jobs = [
+        'DropTrigger' => [],
+        'CreateTrigger' => [],
+        'DropVersion' => [],
+        'CreateVersion' => [],
+        'Reports' => [],
+    ];
 
-    /** @var array names of table which were analysed */
-    private $tableNames = [];
+    /** @var string[] */
+    private array $tableNames = [];
+    private bool $warning = false;
+    private bool $error = false;
+    private AbstractSchemaManager $schemaManager;
+    private Schema $schema;
 
-    /** @var bool  */
-    private $warning = false;
-
-    /** @var bool  */
-    private $error   = false;
-
-    /** @var AbstractSchemaManager */
-    private $schemaManager;
-
-    /** @var Definitions */
-    private $definitionService;
-
-    /** @var CompareService  */
-    private $compareService;
-
-    /** @var Schema */
-    private $schema;
-
-    /** @return bool */
     public function hasError(): bool
     {
         return $this->error;
     }
 
-    /** @return bool */
     public function hasWarning(): bool
     {
         return $this->warning;
     }
 
-    /** @return array */
+    /** @return string[] */
     public function getReport(): array
     {
         return $this->jobs['Reports'];
     }
 
-    /** @return array */
+    /** @return string[] */
     public function getTableNames(): array
     {
         return $this->tableNames;
     }
 
-    /** @param string $tableName */
     public function addTableName(string $tableName): void
     {
         $this->tableNames[] = $tableName;
     }
 
-    /** initialize array jobs */
     private function initJobs(): void
     {
         $this->jobs = [
@@ -87,28 +84,27 @@ class JobService
             'CreateTrigger' => [],
             'DropVersion' => [],
             'CreateVersion' => [],
-            'Reports'   => [],
+            'Reports' => [],
         ];
     }
 
     /**
-     * JobService constructor.
-     * @param AbstractSchemaManager $schemaManager
-     * @param array $ignoreTables
+     * @throws Exception
      */
     public function __construct(
-        AbstractSchemaManager $schemaManager,
-        CompareService $compareService,
-        array $ignoreTables = []
+        private readonly EntityManagerInterface $entityManager,
+        private readonly CompareService $compareService,
+        private readonly VersionConfigService $configService
     ) {
-        $this->schemaManager = $schemaManager;
-        $this->schema = $schemaManager->introspectSchema();
-        $this->ignoreTables = $ignoreTables;
-        $this->definitionService = new Definitions();
-        $this->compareService = $compareService;
+        $connection = $this->entityManager->getConnection();
+        $connection->getConfiguration()->setSchemaAssetsFilter(static fn () => true);
+        $this->schemaManager = $connection->createSchemaManager();
+        $this->schema = $this->schemaManager->introspectSchema();
+        $this->ignoreTables = $this->configService->getIgnoreTables();
     }
 
-    /** get jobs for all tables
+    /**
+     * get jobs for all tables
      *
      * @return array
      * @throws SchemaException
@@ -116,74 +112,59 @@ class JobService
     public function getJobsForAllTables(): array
     {
         $this->initJobs();
-        $tables = $this->schemaManager->listTables();
+        $tables = $this->schema->getTables();
         foreach ($tables as $table) {
-            // table ignored
-            if (in_array($table->getName(), $this->ignoreTables)) {
-                $error = "Table " . $table->getName() . " is configured as ignored";
-                $this->jobs['Reports'][] = $error;
+            $tableName = $table->getObjectName()->toString();
+            if (in_array($tableName, $this->ignoreTables, true)) {
+                $this->jobs['Reports'][] = "Table " . $tableName . " is configured as ignored";
                 continue;
             }
-            // table is version
-            if ($this->definitionService->isVersionTable($table)) {
-                if (true !== $this->originTableExists($table)) {
-                    $error = "VersionTable " . $table->getName() . " has no origin table - you should dropping it!";
-                    $this->jobs['Reports'][] = $error;
-                    $this->jobs['DropVersion'][] = $table->getName();
+            if ($this->isVersionTable($table)) {
+                if (!$this->originTableExists($table)) {
+                    $this->jobs['Reports'][] = "VersionTable " . $tableName . " has no origin table - you should dropping it!";
+                    $this->jobs['DropVersion'][] = $tableName;
                 }
                 continue;
             }
             $this->findJobForTable($table);
-            $this->tableNames[] = $table->getName();
+            $this->tableNames[] = $tableName;
         }
         return $this->jobs;
     }
 
     /**
-     * @param string $tableName
-     * @return array
-     * @throws SchemaException
+     * @throws SchemaException|\Exception
      */
     public function getJobForOneTable(string $tableName): array
     {
         $this->initJobs();
-        // table ignored
-        if (in_array($tableName, $this->ignoreTables)) {
-            $error = "Table " . $tableName . " is configured as ignored";
-            $this->jobs['Reports'][] = $error;
+        if (in_array($tableName, $this->ignoreTables, true)) {
+            $this->jobs['Reports'][] = "Table " . $tableName . " is configured as ignored";
             return $this->jobs;
         }
-        $tableNames = $this->schemaManager->listTableNames();
-        if (!in_array($tableName, $tableNames)) {
-            $error = "Table $tableName does not exists";
-            throw new \Exception($error);
+        if (!$this->schema->hasTable($tableName)) {
+            throw new \Exception("Table $tableName does not exist");
         }
         $this->findJobForTable($this->schema->getTable($tableName));
         return $this->jobs;
     }
 
-    /**
-     * @param Table $versionTable
-     * @return bool
-     */
     private function originTableExists(Table $versionTable): bool
     {
-        $tName = $versionTable->getName();
+        $tName = $versionTable->getObjectName()->toString();
         $orgName = preg_replace("/" . Definitions::VERSION_TABLE_NAME_POSTFIX . "$/", '', $tName);
-        return $this->schemaManager->tablesExist([$orgName]);
+        return $this->schema->hasTable($orgName);
     }
 
     /**
-     * @param Table $table
-     * @return bool
      * @throws SchemaException
      */
-    private function findJobForTable(Table $table): bool
+    private function findJobForTable(Table $table): void
     {
-        $tName = $table->getName();
+        $tName = $table->getObjectName()->toString();
         $versionTable = $this->getVersionTableFromOrigin($table);
-        if (null === $versionTable) { // no version table
-            if (true === $this->definitionService->hasTableVersionColumn($table)) {
+        if (null === $versionTable) {
+            if ($this->hasTableVersionColumn($table)) {
                 $this->jobs['Reports'][] = "$tName: Drop triggers, create version table, create triggers";
                 $this->jobs['DropTrigger'][] = $tName;
                 $this->jobs['CreateVersion'][] = $tName;
@@ -192,45 +173,48 @@ class JobService
                 $this->jobs['Reports'][] = "$tName: Drop triggers";
                 $this->jobs['DropTrigger'][] = $tName;
             }
-            return true;
+            return;
         }
-        if (true === $this->definitionService->hasTableVersionColumn($table)) {
-            //origin has version column, version table exists
-            // comparing is necessary
-            if (true === $this->compareService->compare($table, $versionTable)) {
-                // nice ...
+        if ($this->hasTableVersionColumn($table)) {
+            if ($this->compareService->compare($table, $versionTable)) {
                 $this->jobs['Reports'][] = "$tName: drop triggers, create triggers";
                 $this->jobs['DropTrigger'][] = $tName;
                 $this->jobs['CreateTrigger'][] = $tName;
-                return true;
+                return;
             }
-            // compare not nice!
             $this->error = true;
             $compareErr = $this->compareService->getErrMessage() ?? '';
             $this->jobs['Reports'][] = "ERROR $tName: " . $compareErr;
             $this->jobs['Reports'][] = "$tName: Drop triggers";
             $this->jobs['DropTrigger'][] = $tName;
-            return false;
+            return;
         }
         $this->jobs['Reports'][] = "WARNING $tName: no column version, but existing version table ";
         $this->jobs['Reports'][] = "$tName: drop triggers";
         $this->jobs['DropTrigger'][] = $tName;
         $this->warning = true;
-        return false;
     }
 
     /**
-     * @param Table $table
-     * @return Table|null
      * @throws SchemaException
      */
     private function getVersionTableFromOrigin(Table $table): ?Table
     {
-        $tName = $table->getName();
+        $tName = $table->getObjectName()->toString();
         $versionTableName = $tName . Definitions::VERSION_TABLE_NAME_POSTFIX;
-        if ($this->schemaManager->tablesExist([$versionTableName])) {
+        if ($this->schema->hasTable($versionTableName)) {
             return $this->schema->getTable($versionTableName);
         }
         return null;
+    }
+
+    private function hasTableVersionColumn(Table $table): bool
+    {
+        return $table->hasColumn('version');
+    }
+
+    private function isVersionTable(Table $table): bool
+    {
+        return (bool) preg_match("/" . Definitions::VERSION_TABLE_NAME_POSTFIX . "$/", $table->getObjectName()->toString());
     }
 }

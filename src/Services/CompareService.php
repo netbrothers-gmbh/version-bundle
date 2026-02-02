@@ -1,9 +1,14 @@
 <?php
 
-/**
- * NetBrothers VersionBundle
+declare(strict_types=1);
+
+/*
+ * This file is part of the NetBrothers VersionBundle.
  *
- * @author Stefan Wessel, NetBrothers GmbH
+ * (c) 2021 NetBrothers GmbH | Thilo Ratnaweera & Stefan Wessel (https://netbrothers.de)
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
  */
 
 namespace NetBrothers\VersionBundle\Services;
@@ -14,52 +19,34 @@ use Doctrine\DBAL\Schema\Table;
 
 /**
  * Provides check, if column definitions are identical in two tables.
- * 
- * @package NetBrothers\VersionBundle\Services
  */
-class CompareService
+final class CompareService
 {
-    /** @var string[]  */
     private array $errors = [];
-
     private ?string $errMessage = null;
+    private readonly array $excludeColumnNames;
 
-    /** @var string[]  */
-    private array $excludeColumnNames = ['id', 'version', 'created_at', 'updated_at'];
-
-    /**
-     * CompareService constructor.
-     * @param array|null $excludeColumnNames columns should not be compared
-     */
-    public function __construct(?array $excludeColumnNames = null)
+    public function __construct(VersionConfigService $configService)
     {
-        if (is_array($excludeColumnNames) && 0 < count($excludeColumnNames)) {
-            $this->excludeColumnNames = $excludeColumnNames;
-        }
+        $this->excludeColumnNames = $configService->getIgnoreColumns();
     }
 
-    /**
-     * @return string|null
-     */
     public function getErrMessage(): ?string
     {
         return $this->errMessage;
     }
 
-    /** check if column definitions are the same in both tables
-     *
-     * @param Table $tableOne
-     * @param Table $tableTwo
-     * @return bool
+    /**
+     * check if column definitions are the same in both tables
      */
     public function compare(Table $tableOne, Table $tableTwo): bool
     {
         $columnsInTableOne = $tableOne->getColumns();
-        if (true !== $this->compareColumns($columnsInTableOne, $tableTwo)) {
+        if (!$this->compareColumns($columnsInTableOne, $tableTwo)) {
             return false;
         }
         $columnsInTableTwo = $tableTwo->getColumns();
-        if (true !== $this->compareColumns($columnsInTableTwo, $tableOne)) {
+        if (!$this->compareColumns($columnsInTableTwo, $tableOne)) {
             return false;
         }
         return true;
@@ -67,14 +54,12 @@ class CompareService
 
     /**
      * @param Column[] $columnsInTable
-     * @param Table $compareTable
-     * @return bool
      */
-    private function compareColumns($columnsInTable, Table $compareTable): bool
+    private function compareColumns(array $columnsInTable, Table $compareTable): bool
     {
         foreach ($columnsInTable as $column) {
-            $name = $column->getName();
-            if (in_array($name, $this->excludeColumnNames)) {
+            $name = $column->getObjectName()->toString();
+            if (in_array($name, $this->excludeColumnNames, true)) {
                 continue;
             }
             $compareColumn = $this->getColumn($compareTable, $name);
@@ -83,7 +68,7 @@ class CompareService
                 $this->errMessage = $msg . implode(PHP_EOL . " => ", $this->errors);
                 return false;
             }
-            if( true !== $this->compareOneColumn($column, $compareColumn)) {
+            if (!$this->compareOneColumn($column, $compareColumn)) {
                 $msg = sprintf("Error comparing %s", $name) . PHP_EOL;
                 $this->errMessage = $msg . implode(PHP_EOL . " => ", $this->errors);
                 return false;
@@ -92,15 +77,10 @@ class CompareService
         return true;
     }
 
-    /**
-     * @param Table $table
-     * @param string $columnName
-     * @return Column|null
-     */
     private function getColumn(Table $table, string $columnName): ?Column
     {
-        if (true !== $table->hasColumn($columnName)) {
-            $this->errors[] = $columnName . ' does not exist in table ' . $table->getName();
+        if (!$table->hasColumn($columnName)) {
+            $this->errors[] = $columnName . ' does not exist in table ' . $table->getObjectName()->toString();
             return null;
         }
         try {
@@ -111,11 +91,6 @@ class CompareService
         }
     }
 
-    /**
-     * @param Column $column
-     * @param Column $compareColumn
-     * @return bool
-     */
     private function compareOneColumn(Column $column, Column $compareColumn): bool
     {
         $valid = true;
@@ -123,7 +98,7 @@ class CompareService
         // compare types
         $columnType = $column->getType();
         $compareColumnType = $compareColumn->getType();
-        if (! $columnType instanceof $compareColumnType) {
+        if (!$columnType instanceof $compareColumnType) {
             $this->errors[] = 'different types';
             $valid = false;
         }
