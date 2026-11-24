@@ -24,6 +24,7 @@ use Doctrine\DBAL\Schema\ComparatorConfig;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
+use Doctrine\Persistence\ObjectManager;
 
 /**
  * Lazily resolves the Doctrine DBAL Connection (optionally for a named EntityManager)
@@ -111,10 +112,14 @@ final class DatabaseConnectionProvider
     }
 
     /**
-     * @throws Exception|\RuntimeException
+     * @throws Exception|\InvalidArgumentException|\RuntimeException
      */
     public function introspectTable(string $tableName): Table
     {
+        if ($tableName === '') {
+            throw new \InvalidArgumentException('Table name must not be empty.');
+        }
+
         return $this->withUnfilteredSchemaManager(
             static fn (AbstractSchemaManager $schemaManager): Table => $schemaManager->introspectTableByUnquotedName($tableName),
         );
@@ -156,16 +161,10 @@ final class DatabaseConnectionProvider
                 );
             }
 
-            $manager = $this->managerRegistry->getManager($this->selectedEntityManagerName);
-            if (!$manager instanceof EntityManagerInterface) {
-                throw new \RuntimeException(sprintf(
-                    'Object manager "%s" is not an instance of %s.',
-                    $this->selectedEntityManagerName,
-                    EntityManagerInterface::class,
-                ));
-            }
-
-            return $manager;
+            return $this->ensureEntityManager(
+                $this->managerRegistry->getManager($this->selectedEntityManagerName),
+                $this->selectedEntityManagerName,
+            );
         }
 
         if ($this->defaultEntityManager !== null) {
@@ -173,13 +172,23 @@ final class DatabaseConnectionProvider
         }
 
         if ($this->managerRegistry !== null) {
-            $manager = $this->managerRegistry->getManager();
-            if ($manager instanceof EntityManagerInterface) {
-                return $manager;
-            }
+            return $this->ensureEntityManager($this->managerRegistry->getManager());
         }
 
         throw new \RuntimeException('No Doctrine EntityManagerInterface is available.');
+    }
+
+    private function ensureEntityManager(ObjectManager $manager, ?string $name = null): EntityManagerInterface
+    {
+        if ($manager instanceof EntityManagerInterface) {
+            return $manager;
+        }
+
+        throw new \RuntimeException(sprintf(
+            'Object manager%s is not an instance of %s.',
+            $name !== null ? sprintf(' "%s"', $name) : '',
+            EntityManagerInterface::class,
+        ));
     }
 
     /**

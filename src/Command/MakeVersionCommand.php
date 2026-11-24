@@ -150,11 +150,6 @@ HELP);
 
         $this->reportRenderer->render($io, $entries, $mode, $sql, false);
 
-        if ($mode === ExecutionMode::SYNC && $this->jobService->hasError()) {
-            $io->error('Operation canceled due to errors.');
-            return Command::FAILURE;
-        }
-
         $this->executeService->execute($sql);
 
         $io->success(sprintf('Operation completed (%d SQL statements executed).', count($sql)));
@@ -168,7 +163,6 @@ HELP);
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
      *      'UpdateVersion': array<string, TableSyncPlan>,
-     *      'Reports': string[],
      * } $jobs
      * @return string[]
      * @throws Exception
