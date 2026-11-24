@@ -17,6 +17,8 @@ use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Comparator;
 use Doctrine\DBAL\Schema\Table;
+use NetBrothers\VersionBundle\Services\Report\TableJobEntry;
+use NetBrothers\VersionBundle\Services\Report\TableStatus;
 use NetBrothers\VersionBundle\Services\Schema\TableSyncPlan;
 use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaSyncer;
 use NetBrothers\VersionBundle\Services\Sql\Definitions;
@@ -48,6 +50,10 @@ final class JobService
 
     /** @var string[] */
     private array $tableNames = [];
+
+    /** @var TableJobEntry[] */
+    private array $entries = [];
+
     private bool $warning = false;
     private bool $error = false;
 
@@ -88,6 +94,12 @@ final class JobService
         return $this->tableNames;
     }
 
+    /** @return TableJobEntry[] */
+    public function getTableEntries(): array
+    {
+        return $this->entries;
+    }
+
     public function addTableName(string $tableName): void
     {
         $this->tableNames[] = $tableName;
@@ -116,12 +128,23 @@ final class JobService
         foreach ($this->tables as $tableName => $table) {
             if (in_array($tableName, $this->ignoreTables, true)) {
                 $this->jobs['Reports'][] = 'Table ' . $tableName . ' is configured as ignored';
+                $this->entries[] = new TableJobEntry(
+                    tableName: $tableName,
+                    status: TableStatus::IGNORED,
+                    note: 'Configured in ignore_tables',
+                );
                 continue;
             }
             if ($this->isVersionTableName($tableName)) {
                 if (!isset($this->versionToOriginMap[$tableName])) {
                     $this->jobs['Reports'][] = "WARNING $tableName: orphaned version table (no origin table) - will be dropped";
                     $this->jobs['DropVersion'][] = $tableName;
+                    $this->entries[] = new TableJobEntry(
+                        tableName: $tableName,
+                        status: TableStatus::ORPHANED,
+                        versionTableName: $tableName,
+                        note: 'No origin table found; version table will be dropped',
+                    );
                     $this->warning = true;
                 }
                 continue;
@@ -151,6 +174,11 @@ final class JobService
 
         if (in_array($tableName, $this->ignoreTables, true)) {
             $this->jobs['Reports'][] = 'Table ' . $tableName . ' is configured as ignored';
+            $this->entries[] = new TableJobEntry(
+                tableName: $tableName,
+                status: TableStatus::IGNORED,
+                note: 'Configured in ignore_tables',
+            );
             return $this->jobs;
         }
         if (!isset($this->tables[$tableName])) {
@@ -161,6 +189,12 @@ final class JobService
             if (!isset($this->versionToOriginMap[$tableName])) {
                 $this->jobs['Reports'][] = "WARNING $tableName: orphaned version table (no origin table) - will be dropped";
                 $this->jobs['DropVersion'][] = $tableName;
+                $this->entries[] = new TableJobEntry(
+                    tableName: $tableName,
+                    status: TableStatus::ORPHANED,
+                    versionTableName: $tableName,
+                    note: 'No origin table found; version table will be dropped',
+                );
                 $this->warning = true;
                 return $this->jobs;
             }
@@ -191,6 +225,7 @@ final class JobService
             'Reports' => [],
         ];
         $this->tableNames = [];
+        $this->entries = [];
         $this->warning = false;
         $this->error = false;
     }
@@ -220,19 +255,33 @@ final class JobService
         Comparator $comparator,
         AbstractPlatform $platform,
     ): void {
-        $versionTable = $this->getVersionTableFromOrigin($tName);
+        $versionTableName = $this->identifierHelper->buildVersionTableName($tName);
+        $versionTable = $this->tables[$versionTableName] ?? null;
+
         if ($versionTable === null) {
             if ($this->hasTableVersionColumn($table)) {
                 $this->jobs['Reports'][] = "$tName: drop triggers, create version table, create triggers";
                 $this->jobs['DropTrigger'][] = $tName;
                 $this->jobs['CreateVersion'][] = $tName;
                 $this->jobs['CreateTrigger'][] = $tName;
+                $this->entries[] = new TableJobEntry(
+                    tableName: $tName,
+                    status: TableStatus::CREATE,
+                    versionTableName: $versionTableName,
+                    note: sprintf('Create %s, backfill rows, create triggers', $versionTableName),
+                );
             } else {
                 $this->jobs['Reports'][] = "$tName: drop triggers";
                 $this->jobs['DropTrigger'][] = $tName;
+                $this->entries[] = new TableJobEntry(
+                    tableName: $tName,
+                    status: TableStatus::NO_VERSION,
+                    note: 'No version column (drop any stale triggers)',
+                );
             }
             return;
         }
+
         if ($this->hasTableVersionColumn($table)) {
             $syncPlan = $this->schemaSyncer->planSync($table, $versionTable, $comparator, $platform);
             $this->jobs['DropTrigger'][] = $tName;
@@ -251,15 +300,34 @@ final class JobService
                     );
                     $this->warning = true;
                 }
+                $this->entries[] = new TableJobEntry(
+                    tableName: $tName,
+                    status: TableStatus::UPDATE,
+                    versionTableName: $versionTableName,
+                    syncPlan: $syncPlan,
+                );
             } else {
                 $this->jobs['Reports'][] = "$tName: up to date (drop triggers, create triggers)";
+                $this->entries[] = new TableJobEntry(
+                    tableName: $tName,
+                    status: TableStatus::UP_TO_DATE,
+                    versionTableName: $versionTableName,
+                    note: 'Schema in sync; recreate triggers',
+                );
             }
 
             return;
         }
+
         $this->jobs['Reports'][] = "WARNING $tName: no column version, but existing version table";
         $this->jobs['Reports'][] = "$tName: drop triggers";
         $this->jobs['DropTrigger'][] = $tName;
+        $this->entries[] = new TableJobEntry(
+            tableName: $tName,
+            status: TableStatus::MISSING_VERSION_COLUMN,
+            versionTableName: $versionTableName,
+            note: sprintf('No version column, but %s still exists (dropping triggers only)', $versionTableName),
+        );
         $this->warning = true;
     }
 
@@ -277,13 +345,6 @@ final class JobService
         }
 
         return implode(', ', $parts);
-    }
-
-    private function getVersionTableFromOrigin(string $originTableName): ?Table
-    {
-        $versionTableName = $this->identifierHelper->buildVersionTableName($originTableName);
-
-        return $this->tables[$versionTableName] ?? null;
     }
 
     private function hasTableVersionColumn(Table $table): bool
