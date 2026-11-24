@@ -19,6 +19,8 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
+use Doctrine\DBAL\Schema\Comparator;
+use Doctrine\DBAL\Schema\ComparatorConfig;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -116,6 +118,23 @@ final class DatabaseConnectionProvider
         return $this->withUnfilteredSchemaManager(
             static fn (AbstractSchemaManager $schemaManager): Table => $schemaManager->introspectTableByUnquotedName($tableName),
         );
+    }
+
+    /**
+     * Creates a Doctrine DBAL Comparator configured without deprecated modified-index reporting
+     * and without heuristic column rename detection.
+     *
+     * @throws Exception|\RuntimeException
+     */
+    public function createComparator(): Comparator
+    {
+        $config = new ComparatorConfig(
+            detectRenamedColumns: false,
+            detectRenamedIndexes: false,
+            reportModifiedIndexes: false,
+        );
+
+        return $this->getConnection()->createSchemaManager()->createComparator($config);
     }
 
     /**

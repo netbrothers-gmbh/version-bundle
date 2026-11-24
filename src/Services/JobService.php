@@ -14,7 +14,11 @@ declare(strict_types=1);
 namespace NetBrothers\VersionBundle\Services;
 
 use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Schema\Comparator;
 use Doctrine\DBAL\Schema\Table;
+use NetBrothers\VersionBundle\Services\Schema\TableSyncPlan;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaSyncer;
 use NetBrothers\VersionBundle\Services\Sql\Definitions;
 use NetBrothers\VersionBundle\Services\Sql\IdentifierHelper;
 
@@ -29,6 +33,7 @@ final class JobService
      *      'CreateTrigger': string[],
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
+     *      'UpdateVersion': array<string, TableSyncPlan>,
      *      'Reports': string[],
      * }
      */
@@ -37,6 +42,7 @@ final class JobService
         'CreateTrigger' => [],
         'DropVersion' => [],
         'CreateVersion' => [],
+        'UpdateVersion' => [],
         'Reports' => [],
     ];
 
@@ -53,7 +59,7 @@ final class JobService
 
     public function __construct(
         private readonly DatabaseConnectionProvider $connectionProvider,
-        private readonly CompareService $compareService,
+        private readonly VersionTableSchemaSyncer $schemaSyncer,
         VersionConfigService $configService,
         private readonly IdentifierHelper $identifierHelper,
     ) {
@@ -95,6 +101,7 @@ final class JobService
      *      'CreateTrigger': string[],
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
+     *      'UpdateVersion': array<string, TableSyncPlan>,
      *      'Reports': string[],
      * }
      * @throws Exception|\RuntimeException
@@ -103,6 +110,8 @@ final class JobService
     {
         $this->initJobs();
         $this->loadTables();
+        $comparator = $this->connectionProvider->createComparator();
+        $platform = $this->connectionProvider->getPlatform();
 
         foreach ($this->tables as $tableName => $table) {
             if (in_array($tableName, $this->ignoreTables, true)) {
@@ -117,7 +126,7 @@ final class JobService
                 }
                 continue;
             }
-            $this->findJobForTable($tableName, $table);
+            $this->findJobForTable($tableName, $table, $comparator, $platform);
             $this->tableNames[] = $tableName;
         }
 
@@ -130,6 +139,7 @@ final class JobService
      *      'CreateTrigger': string[],
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
+     *      'UpdateVersion': array<string, TableSyncPlan>,
      *      'Reports': string[],
      * }
      * @throws Exception|\InvalidArgumentException|\RuntimeException
@@ -161,7 +171,10 @@ final class JobService
             ));
         }
 
-        $this->findJobForTable($tableName, $this->tables[$tableName]);
+        $comparator = $this->connectionProvider->createComparator();
+        $platform = $this->connectionProvider->getPlatform();
+
+        $this->findJobForTable($tableName, $this->tables[$tableName], $comparator, $platform);
         $this->tableNames[] = $tableName;
 
         return $this->jobs;
@@ -174,6 +187,7 @@ final class JobService
             'CreateTrigger' => [],
             'DropVersion' => [],
             'CreateVersion' => [],
+            'UpdateVersion' => [],
             'Reports' => [],
         ];
         $this->tableNames = [];
@@ -197,39 +211,72 @@ final class JobService
         }
     }
 
-    private function findJobForTable(string $tName, Table $table): void
-    {
+    /**
+     * @throws Exception
+     */
+    private function findJobForTable(
+        string $tName,
+        Table $table,
+        Comparator $comparator,
+        AbstractPlatform $platform,
+    ): void {
         $versionTable = $this->getVersionTableFromOrigin($tName);
         if ($versionTable === null) {
             if ($this->hasTableVersionColumn($table)) {
-                $this->jobs['Reports'][] = "$tName: Drop triggers, create version table, create triggers";
+                $this->jobs['Reports'][] = "$tName: drop triggers, create version table, create triggers";
                 $this->jobs['DropTrigger'][] = $tName;
                 $this->jobs['CreateVersion'][] = $tName;
                 $this->jobs['CreateTrigger'][] = $tName;
             } else {
-                $this->jobs['Reports'][] = "$tName: Drop triggers";
+                $this->jobs['Reports'][] = "$tName: drop triggers";
                 $this->jobs['DropTrigger'][] = $tName;
             }
             return;
         }
         if ($this->hasTableVersionColumn($table)) {
-            if ($this->compareService->compare($table, $versionTable)) {
-                $this->jobs['Reports'][] = "$tName: drop triggers, create triggers";
-                $this->jobs['DropTrigger'][] = $tName;
-                $this->jobs['CreateTrigger'][] = $tName;
-                return;
-            }
-            $this->error = true;
-            $compareErr = $this->compareService->getErrMessage() ?? '';
-            $this->jobs['Reports'][] = "ERROR $tName: " . $compareErr;
-            $this->jobs['Reports'][] = "$tName: Drop triggers";
+            $syncPlan = $this->schemaSyncer->planSync($table, $versionTable, $comparator, $platform);
             $this->jobs['DropTrigger'][] = $tName;
+            $this->jobs['CreateTrigger'][] = $tName;
+
+            if ($syncPlan->hasChanges()) {
+                $this->jobs['UpdateVersion'][$tName] = $syncPlan;
+                $changes = $this->formatSyncChanges($syncPlan);
+                $this->jobs['Reports'][] = "$tName: drop triggers, update version table ($changes), create triggers";
+                if ($syncPlan->droppedColumns !== []) {
+                    $this->jobs['Reports'][] = sprintf(
+                        'WARNING %s: dropping column(s) from %s (%s)',
+                        $tName,
+                        $syncPlan->versionTableName,
+                        implode(', ', $syncPlan->droppedColumns),
+                    );
+                    $this->warning = true;
+                }
+            } else {
+                $this->jobs['Reports'][] = "$tName: up to date (drop triggers, create triggers)";
+            }
+
             return;
         }
         $this->jobs['Reports'][] = "WARNING $tName: no column version, but existing version table";
         $this->jobs['Reports'][] = "$tName: drop triggers";
         $this->jobs['DropTrigger'][] = $tName;
         $this->warning = true;
+    }
+
+    private function formatSyncChanges(TableSyncPlan $plan): string
+    {
+        $parts = [];
+        foreach ($plan->addedColumns as $col) {
+            $parts[] = '+ADD ' . $col;
+        }
+        foreach ($plan->modifiedColumns as $col) {
+            $parts[] = '~MODIFY ' . $col;
+        }
+        foreach ($plan->droppedColumns as $col) {
+            $parts[] = '-DROP ' . $col;
+        }
+
+        return implode(', ', $parts);
     }
 
     private function getVersionTableFromOrigin(string $originTableName): ?Table

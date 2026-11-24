@@ -15,11 +15,11 @@ namespace NetBrothers\VersionBundle\Command;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Exception;
-use NetBrothers\VersionBundle\Services\CompareService;
 use NetBrothers\VersionBundle\Services\DatabaseConnectionProvider;
 use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
 use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaSyncer;
 use NetBrothers\VersionBundle\Services\Sql\CreateTrigger;
 use NetBrothers\VersionBundle\Services\Sql\DropTrigger;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
@@ -88,10 +88,10 @@ final class MakeVersionStandaloneCommand extends Command
         $connectionProvider = new DatabaseConnectionProvider($this->entityManager);
         $identifierHelper = new IdentifierHelper();
         $schemaBuilder = new VersionTableSchemaBuilder($identifierHelper);
-        $compareService = new CompareService($configService, $schemaBuilder);
-        $versionTable = new VersionTable($schemaBuilder);
+        $schemaSyncer = new VersionTableSchemaSyncer($schemaBuilder, $configService);
+        $versionTable = new VersionTable($schemaBuilder, $configService);
         $dropTrigger = new DropTrigger($identifierHelper);
-        $createTrigger = new CreateTrigger($identifierHelper);
+        $createTrigger = new CreateTrigger($identifierHelper, $schemaBuilder, $configService);
         $generateService = new GenerateService(
             $connectionProvider,
             $versionTable,
@@ -99,7 +99,7 @@ final class MakeVersionStandaloneCommand extends Command
             $createTrigger,
             $identifierHelper,
         );
-        $jobService = new JobService($connectionProvider, $compareService, $configService, $identifierHelper);
+        $jobService = new JobService($connectionProvider, $schemaSyncer, $configService, $identifierHelper);
         $executeService = new ExecuteService($connectionProvider);
 
         $symfonyCommand = new MakeVersionCommand($connectionProvider, $jobService, $generateService, $executeService);
