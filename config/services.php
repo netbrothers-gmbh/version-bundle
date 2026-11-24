@@ -23,7 +23,7 @@ return static function (ContainerConfigurator $container): void {
         ->autoconfigure();
 
     $services->load('NetBrothers\\VersionBundle\\', '../src/*')
-        ->exclude('../src/{DependencyInjection,Entity,Tests,Resources,Services/VersionConfigService.php}');
+        ->exclude('../src/{Traits,Services/VersionConfigService.php}');
 
     $services->set(VersionConfigService::class)
         ->arg('$config', param('netbrothers_version'));

@@ -14,9 +14,14 @@ declare(strict_types=1);
 namespace NetBrothers\VersionBundle\Command;
 
 use Doctrine\DBAL\Exception;
+use NetBrothers\VersionBundle\Services\DatabaseConnectionProvider;
 use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
+use NetBrothers\VersionBundle\Services\Report\ConsoleReportRenderer;
+use NetBrothers\VersionBundle\Services\Report\ExecutionMode;
+use NetBrothers\VersionBundle\Services\Schema\TableSyncPlan;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
+use NetBrothers\VersionBundle\Services\Sql\SqlScriptFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -27,14 +32,17 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'netbrothers:version',
-    description: 'Create version tables and triggers.',
+    description: 'Create, synchronize, and manage MariaDB/MySQL version tables and triggers.',
 )]
 final class MakeVersionCommand extends Command
 {
     public function __construct(
+        private readonly DatabaseConnectionProvider $connectionProvider,
         private readonly JobService $jobService,
         private readonly GenerateService $generateService,
-        private readonly ExecuteService $executeService
+        private readonly ExecuteService $executeService,
+        private readonly ConsoleReportRenderer $reportRenderer,
+        private readonly SqlScriptFormatter $sqlScriptFormatter,
     ) {
         parent::__construct();
     }
@@ -42,12 +50,47 @@ final class MakeVersionCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('tableName', InputArgument::OPTIONAL, 'Work only on this table')
-            ->addOption('create-trigger', null, InputOption::VALUE_NONE, 'Drop triggers, create missing version tables, recreate triggers')
-            ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop triggers, drop version tables')
-            ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop triggers')
-            ->addOption('sql', null, InputOption::VALUE_NONE, 'Print the SQL statements without doing anything')
-            ->addOption('summary', null, InputOption::VALUE_NONE, 'Print a human readable summary of what the command would do');
+            ->addArgument('tableName', InputArgument::OPTIONAL, 'Process only this origin table')
+            ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop versioning triggers and `_version` tables')
+            ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop versioning triggers only (keep `_version` tables)')
+            ->addOption('sql', null, InputOption::VALUE_NONE, 'Output executable SQL statements to stdout without modifying the database')
+            ->addOption('summary', null, InputOption::VALUE_NONE, 'Display the planned table changes and statistics without executing SQL')
+            ->addOption('em', null, InputOption::VALUE_REQUIRED, 'The Doctrine entity manager to use for this command')
+            ->setHelp(<<<'HELP'
+The <info>%command.name%</info> command manages <comment>_version</comment> tables and versioning triggers for MariaDB/MySQL tables containing a <comment>version</comment> column.
+
+<info>Recommended Migration Workflow:</info>
+  1. Run Doctrine migrations (origin tables only):
+     <comment>php bin/console doctrine:migrations:migrate</comment>
+  2. Synchronize version tables and recreate triggers:
+     <comment>php bin/console %command.name%</comment>
+
+  For every versioned table, the default mode executes:
+    - Drop existing triggers (including legacy v4 <comment>BEVOR_*</comment> triggers)
+    - Create missing <comment>_version</comment> tables (and safely backfill existing rows)
+    - Automatically synchronize existing <comment>_version</comment> tables (<comment>ADD</comment>, <comment>MODIFY</comment>, <comment>DROP</comment> columns)
+    - Recreate <comment>BEFORE/AFTER INSERT</comment> and <comment>BEFORE/AFTER UPDATE</comment> triggers
+
+  All non-primary-key columns in <comment>_version</comment> tables are maintained as nullable (<comment>NULL</comment>) so adding
+  <comment>NOT NULL</comment> columns without defaults or tightening <comment>NULL -> NOT NULL</comment> never fails on historical rows.
+  Columns removed from origin tables are dropped from <comment>_version</comment> tables as well.
+
+<info>Data-Migration Edge Case:</info>
+  If a Doctrine migration executes <comment>INSERT</comment> or <comment>UPDATE</comment> statements on a versioned table
+  <comment>after</comment> altering its columns, drop triggers beforehand:
+    <comment>php bin/console %command.name% --drop-trigger</comment>
+    <comment>php bin/console doctrine:migrations:migrate</comment>
+    <comment>php bin/console %command.name%</comment>
+
+<info>Examples:</info>
+  <comment>php bin/console %command.name%</comment>                          Synchronize all tables and recreate triggers
+  <comment>php bin/console %command.name% protocol</comment>                 Synchronize only the "protocol" table
+  <comment>php bin/console %command.name% --summary</comment>                Dry-run: show table plan, column diffs, and counters
+  <comment>php bin/console %command.name% --sql > version_sync.sql</comment> Dry-run: export clean executable SQL script
+  <comment>php bin/console %command.name% --drop-trigger</comment>           Drop triggers only (preserve version history)
+  <comment>php bin/console %command.name% --drop-version</comment>           Drop triggers and all `_version` tables
+  <comment>php bin/console %command.name% --em=secondary</comment>           Run against a specific Doctrine EntityManager
+HELP);
     }
 
     /**
@@ -56,111 +99,116 @@ final class MakeVersionCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $isDropVersion = (bool) $input->getOption('drop-version');
+        $isDropTrigger = (bool) $input->getOption('drop-trigger');
+        $isSql = (bool) $input->getOption('sql');
+        $isSummary = (bool) $input->getOption('summary');
+
+        if ($isDropVersion && $isDropTrigger) {
+            $io->error('Options --drop-trigger and --drop-version cannot be used together.');
+            return Command::FAILURE;
+        }
+
+        if ($isSql && $isSummary) {
+            $io->error('Options --sql and --summary cannot be used together.');
+            return Command::FAILURE;
+        }
+
+        $mode = match (true) {
+            $isDropVersion => ExecutionMode::DROP_VERSION,
+            $isDropTrigger => ExecutionMode::DROP_TRIGGER,
+            default => ExecutionMode::SYNC,
+        };
+
+        $emName = $input->getOption('em');
+        $this->connectionProvider->selectEntityManager(is_string($emName) && $emName !== '' ? $emName : null);
+
         $tableName = $input->getArgument('tableName');
 
         try {
             $jobs = (null !== $tableName)
-                ? $this->jobService->getJobForOneTable($tableName)
+                ? $this->jobService->getJobForOneTable((string) $tableName)
                 : $this->jobService->getJobsForAllTables();
-        } catch (\Exception $e) {
+            $sql = $this->prepareSql($jobs, $mode);
+        } catch (\Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
-        $sql = $this->prepareSql($jobs, $input);
 
-        $io->newLine();
-        $this->printStatistic($io, $jobs);
-        $io->newLine();
-
-        if ($input->getOption('summary')) {
-            return $this->printReport($io, $jobs);
+        if ($isSql) {
+            $output->write($this->sqlScriptFormatter->format($sql));
+            return Command::SUCCESS;
         }
 
-        if ($input->getOption('sql')) {
-            return $this->printSql($io, $sql);
+        $entries = $this->jobService->getTableEntries();
+
+        if ($isSummary) {
+            $this->reportRenderer->render($io, $entries, $mode, $sql, true);
+            $io->note('Dry-run complete (--summary). No SQL statements were executed.');
+            return Command::SUCCESS;
         }
 
-        $io->newLine(2);
-        if ($this->jobService->hasError()) {
-            $this->printReport($io, $jobs);
-            $io->newLine(2);
-            $io->note('Operation canceled due to errors.');
-            return Command::FAILURE;
-        }
+        $this->reportRenderer->render($io, $entries, $mode, $sql, false);
 
         $this->executeService->execute($sql);
 
-        if ($this->jobService->hasWarning()) {
-            $this->printReport($io, $jobs);
-        }
-
-        $io->success('Operation successful.');
+        $io->success(sprintf('Operation completed (%d SQL statements executed).', count($sql)));
         return Command::SUCCESS;
     }
 
     /**
+     * @param array{
+     *      'DropTrigger': string[],
+     *      'CreateTrigger': string[],
+     *      'DropVersion': string[],
+     *      'CreateVersion': string[],
+     *      'UpdateVersion': array<string, TableSyncPlan>,
+     * } $jobs
+     * @return string[]
      * @throws Exception
      */
-    private function prepareSql(array $jobs, InputInterface $input): array
+    private function prepareSql(array $jobs, ExecutionMode $mode): array
     {
         $sql = [];
         $tableNames = $this->jobService->getTableNames();
 
-        foreach ($tableNames as $tableName) {
-            if ($input->getOption('drop-version')) {
+        if ($mode === ExecutionMode::DROP_VERSION) {
+            foreach ($tableNames as $tableName) {
                 $sql = array_merge($sql, $this->generateService->dropVersionTableAndTriggersInOriginTable($tableName));
-            } elseif ($input->getOption('drop-trigger')) {
+            }
+            foreach ($jobs['DropVersion'] as $orphanedVersionTable) {
+                $sql = array_merge($sql, $this->generateService->dropOrphanedVersionTable($orphanedVersionTable));
+            }
+            return $sql;
+        }
+
+        if ($mode === ExecutionMode::DROP_TRIGGER) {
+            foreach ($tableNames as $tableName) {
                 $sql = array_merge($sql, $this->generateService->dropTriggers($tableName));
+            }
+            return $sql;
+        }
+
+        foreach ($jobs['DropVersion'] as $orphanedVersionTable) {
+            $sql = array_merge($sql, $this->generateService->dropOrphanedVersionTable($orphanedVersionTable));
+        }
+
+        foreach ($tableNames as $tableName) {
+            if (in_array($tableName, $jobs['DropTrigger'], true)) {
+                $sql = array_merge($sql, $this->generateService->dropTriggers($tableName));
+            }
+            if (in_array($tableName, $jobs['CreateVersion'], true)) {
+                $sql = array_merge($sql, $this->generateService->createVersionAndTriggers($tableName));
             } else {
-                if (in_array($tableName, $jobs['DropTrigger'], true)) {
-                    $sql = array_merge($sql, $this->generateService->dropTriggers($tableName));
+                if (isset($jobs['UpdateVersion'][$tableName])) {
+                    $sql = array_merge($sql, $jobs['UpdateVersion'][$tableName]->sql);
                 }
-                if (in_array($tableName, $jobs['CreateVersion'], true)) {
-                    $sql = array_merge($sql, $this->generateService->createVersionAndTriggers($tableName));
-                } elseif (in_array($tableName, $jobs['CreateTrigger'], true)) {
+                if (in_array($tableName, $jobs['CreateTrigger'], true)) {
                     $sql = array_merge($sql, $this->generateService->createTriggers($tableName));
                 }
             }
         }
+
         return $sql;
-    }
-
-    private function printReport(SymfonyStyle $io, array $jobs): int
-    {
-        $errors = [];
-        $warnings = [];
-        foreach ($jobs['Reports'] as $message) {
-            if (str_starts_with($message, 'ERROR')) {
-                $errors[] = $message;
-            } elseif (str_starts_with($message, 'WARNING')) {
-                $warnings[] = $message;
-            } else {
-                $io->writeln($message);
-            }
-        }
-        if (!empty($warnings)) {
-            $io->warning(implode(PHP_EOL, $warnings));
-        }
-        if (!empty($errors)) {
-            $io->error(implode(PHP_EOL, $errors));
-        }
-        return Command::SUCCESS;
-    }
-
-    private function printSql(SymfonyStyle $io, array $sql): int
-    {
-        foreach ($sql as $query) {
-            $io->writeln($query);
-        }
-        return Command::SUCCESS;
-    }
-
-    private function printStatistic(SymfonyStyle $io, array $jobs): void
-    {
-        $io->writeln("Handling " . count($this->jobService->getTableNames()) . " tables:");
-        $io->writeln("Drop Versions: " . count($jobs['DropVersion']));
-        $io->writeln("Drop Triggers: " . count($jobs['DropTrigger']));
-        $io->writeln("Create Version: " . count($jobs['CreateVersion']));
-        $io->writeln("Create Triggers: " . count($jobs['CreateTrigger']));
     }
 }

@@ -13,129 +13,129 @@ declare(strict_types=1);
 
 namespace NetBrothers\VersionBundle\Services\Sql;
 
-use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
-use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\DBAL\Schema\Table;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
+use NetBrothers\VersionBundle\Services\VersionConfigService;
 
 /**
- * generating sql for creating triggers
+ * Generates SQL statements for creating versioning triggers on MariaDB/MySQL tables.
  */
-final class CreateTrigger
+final readonly class CreateTrigger
 {
-    private AbstractSchemaManager $schemaManager;
-    private AbstractPlatform $platform;
-
-    /** @var string CREATE DEFINER = CURRENT_USER TRIGGER db.table_%s */
-    private string $fCreateSql;
-
-    /** @var string INSERT INTO (...) VALUES (...) */
-    private string $triggerBody;
-
-    private string $fTriggerSql = <<<EOF
-%s %s ON `%s` 
-FOR EACH ROW
-BEGIN
-    %s 
-END
-
-EOF;
-
-    /**
-     * @throws Exception
-     */
-    public function __construct(private readonly EntityManagerInterface $entityManager)
-    {
-        $connection = $this->entityManager->getConnection();
-        $this->schemaManager = $connection->createSchemaManager();
-        $this->platform = $connection->getDatabasePlatform();
+    public function __construct(
+        private IdentifierHelper $identifierHelper,
+        private VersionTableSchemaBuilder $schemaBuilder,
+        private VersionConfigService $configService,
+    ) {
     }
 
     /**
-     * creating sql for insert triggers in one table
+     * Generates CREATE TRIGGER statements for all four versioning triggers of an origin table.
+     *
      * @return string[]
-     * @throws Exception
      */
-    public function getSql(string $databaseName, string $tableName): array
+    public function getSql(string $databaseName, Table $originTable, AbstractPlatform $platform): array
     {
-        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
-        $this->setTriggerBody($databaseName, $tableName, $versionTableName);
-        $this->setFCreateSql($databaseName, $tableName);
-        $sql = [];
-        $sql[] = $this->createTriggerBeforeInsert($tableName);
-        $sql[] = $this->createTriggerAfterInsert($tableName);
-        $sql[] = $this->createTriggerBeforeUpdate($tableName);
-        $sql[] = $this->createTriggerAfterUpdate($tableName);
-        return $sql;
+        $tableName = $originTable->getObjectName()->getUnqualifiedName()->getValue();
+        $versionTableName = $this->identifierHelper->buildVersionTableName($tableName);
+
+        $quotedDb = $platform->quoteSingleIdentifier($databaseName);
+        $quotedTable = $platform->quoteSingleIdentifier($tableName);
+        $quotedVersionTable = $platform->quoteSingleIdentifier($versionTableName);
+        $quotedVersionCol = $platform->quoteSingleIdentifier('version');
+
+        $insertBody = $this->buildInsertBody($originTable, $quotedDb, $quotedVersionTable, $platform);
+
+        return [
+            $this->buildTriggerSql(
+                $quotedDb,
+                $tableName,
+                $quotedTable,
+                Definitions::TRIGGER_NAME_BEFORE_INSERT_SET_VERSION,
+                'BEFORE INSERT',
+                sprintf('SET NEW.%s = 1;', $quotedVersionCol),
+                $platform,
+            ),
+            $this->buildTriggerSql(
+                $quotedDb,
+                $tableName,
+                $quotedTable,
+                Definitions::TRIGGER_NAME_AFTER_INSERT_INSERT_VERSION,
+                'AFTER INSERT',
+                $insertBody,
+                $platform,
+            ),
+            $this->buildTriggerSql(
+                $quotedDb,
+                $tableName,
+                $quotedTable,
+                Definitions::TRIGGER_NAME_BEFORE_UPDATE_SET_VERSION,
+                'BEFORE UPDATE',
+                sprintf('SET NEW.%s = COALESCE(OLD.%s, 0) + 1;', $quotedVersionCol, $quotedVersionCol),
+                $platform,
+            ),
+            $this->buildTriggerSql(
+                $quotedDb,
+                $tableName,
+                $quotedTable,
+                Definitions::TRIGGER_NAME_AFTER_UPDATE_INSERT_VERSION,
+                'AFTER UPDATE',
+                $insertBody,
+                $platform,
+            ),
+        ];
     }
 
-    private function setFCreateSql(string $databaseName, string $tableName): void
-    {
-        $inner = sprintf("`%s`.`%s", $databaseName, $tableName);
-        $this->fCreateSql = "CREATE DEFINER = CURRENT_USER TRIGGER " . $inner . "_%s`";
-    }
+    private function buildInsertBody(
+        Table $originTable,
+        string $quotedDb,
+        string $quotedVersionTable,
+        AbstractPlatform $platform,
+    ): string {
+        $protectedPkColumns = $this->schemaBuilder->getVersionPrimaryKeyColumnNames($originTable);
+        $ignoredColumns = array_values(array_diff($this->configService->getIgnoreColumns(), $protectedPkColumns));
 
-    /**
-     * creating trigger "setting version to int 1 before insert"
-     */
-    private function createTriggerBeforeInsert(string $tableName): string
-    {
-        $triggerName = Definitions::TRIGGER_NAME_BEFORE_INSERT_SET_VERSION;
-        $createStatement = sprintf($this->fCreateSql, $triggerName);
-        $eventStatement = "BEFORE INSERT";
-        $triggerBody = "SET NEW.version = 1;";
-        return sprintf($this->fTriggerSql, $createStatement, $eventStatement, $tableName, $triggerBody);
-    }
-
-    /**
-     * creating trigger "create first entry in table version"
-     */
-    private function createTriggerAfterInsert(string $tableName): string
-    {
-        $triggerName = Definitions::TRIGGER_NAME_AFTER_INSERT_INSERT_VERSION;
-        $createStatement = sprintf($this->fCreateSql, $triggerName);
-        $eventStatement = "AFTER INSERT";
-        return sprintf($this->fTriggerSql, $createStatement, $eventStatement, $tableName, $this->triggerBody);
-    }
-
-    /**
-     * creating trigger "increment column version before update"
-     */
-    private function createTriggerBeforeUpdate(string $tableName): string
-    {
-        $triggerName = Definitions::TRIGGER_NAME_BEFORE_UPDATE_SET_VERSION;
-        $createStatement = sprintf($this->fCreateSql, $triggerName);
-        $eventStatement = "BEFORE UPDATE";
-        $triggerBody = "SET NEW.version = OLD.version+1;";
-        return sprintf($this->fTriggerSql, $createStatement, $eventStatement, $tableName, $triggerBody);
-    }
-
-    /**
-     * insert version to version table by update
-     */
-    private function createTriggerAfterUpdate(string $tableName): string
-    {
-        $triggerName = Definitions::TRIGGER_NAME_AFTER_UPDATE_INSERT_VERSION;
-        $createStatement = sprintf($this->fCreateSql, $triggerName);
-        $eventStatement = "AFTER UPDATE";
-        return sprintf($this->fTriggerSql, $createStatement, $eventStatement, $tableName, $this->triggerBody);
-    }
-
-    /**
-     * @throws Exception
-     */
-    private function setTriggerBody(string $databaseName, string $tableName, string $versionTableName): void
-    {
-        $tableColumns = $this->schemaManager->introspectTableByUnquotedName($tableName)->getColumns();
         $columnNames = [];
         $values = [];
-        foreach ($tableColumns as $column) {
-            $quotedColName = $column->getObjectName()->toSQL($this->platform);
-            $columnNames[] = $quotedColName;
-            $values[] = "NEW." . $quotedColName;
+        foreach ($originTable->getColumns() as $column) {
+            $columnName = $column->getObjectName()->getIdentifier()->getValue();
+            if (in_array($columnName, $ignoredColumns, true)) {
+                continue;
+            }
+            $quotedCol = $platform->quoteSingleIdentifier($columnName);
+            $columnNames[] = $quotedCol;
+            $values[] = 'NEW.' . $quotedCol;
         }
-        $stringColumnNames = "(" . implode(",", $columnNames) . ")";
-        $stringValues = "(" . implode(",", $values) . ")";
-        $this->triggerBody = "INSERT INTO `$databaseName`.`$versionTableName` $stringColumnNames VALUES $stringValues;";
+
+        return sprintf(
+            'INSERT INTO %s.%s (%s) VALUES (%s);',
+            $quotedDb,
+            $quotedVersionTable,
+            implode(', ', $columnNames),
+            implode(', ', $values),
+        );
+    }
+
+    private function buildTriggerSql(
+        string $quotedDb,
+        string $tableName,
+        string $quotedTable,
+        string $triggerSuffix,
+        string $event,
+        string $body,
+        AbstractPlatform $platform,
+    ): string {
+        $triggerName = $this->identifierHelper->buildTriggerName($tableName, $triggerSuffix);
+        $quotedTrigger = $platform->quoteSingleIdentifier($triggerName);
+
+        return sprintf(
+            "CREATE DEFINER = CURRENT_USER TRIGGER %s.%s %s ON %s\nFOR EACH ROW\nBEGIN\n    %s\nEND",
+            $quotedDb,
+            $quotedTrigger,
+            $event,
+            $quotedTable,
+            $body,
+        );
     }
 }

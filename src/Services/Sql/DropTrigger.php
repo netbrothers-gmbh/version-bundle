@@ -13,29 +13,45 @@ declare(strict_types=1);
 
 namespace NetBrothers\VersionBundle\Services\Sql;
 
-/**
- * generating sql for dropping triggers
- */
-final class DropTrigger
-{
-    /**
-     * generates sql-Statement for dropping triggers
-     * @return string[]
-     */
-    public function getSql(string $databaseName, string $tableName): array
-    {
-        $fDrop = $this->createDropStatement($databaseName, $tableName);
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 
-        return [
-            sprintf($fDrop, Definitions::TRIGGER_NAME_BEFORE_INSERT_SET_VERSION),
-            sprintf($fDrop, Definitions::TRIGGER_NAME_AFTER_INSERT_INSERT_VERSION),
-            sprintf($fDrop, Definitions::TRIGGER_NAME_BEFORE_UPDATE_SET_VERSION),
-            sprintf($fDrop, Definitions::TRIGGER_NAME_AFTER_UPDATE_INSERT_VERSION),
-        ];
+/**
+ * Generates SQL statements for dropping versioning triggers (including legacy v4 trigger names).
+ */
+final readonly class DropTrigger
+{
+    public function __construct(
+        private IdentifierHelper $identifierHelper,
+    ) {
     }
 
-    private function createDropStatement(string $databaseName, string $tableName): string
+    /**
+     * Generates DROP TRIGGER IF EXISTS statements for all versioning triggers of a table.
+     *
+     * @return string[]
+     */
+    public function getSql(string $databaseName, string $tableName, AbstractPlatform $platform): array
     {
-        return sprintf("DROP TRIGGER IF EXISTS `%s`.`%s_%%s`;", $databaseName, $tableName);
+        $quotedDb = $platform->quoteSingleIdentifier($databaseName);
+
+        $suffixes = [
+            Definitions::TRIGGER_NAME_BEFORE_INSERT_SET_VERSION,
+            Definitions::LEGACY_TRIGGER_NAME_BEFORE_INSERT_SET_VERSION,
+            Definitions::TRIGGER_NAME_AFTER_INSERT_INSERT_VERSION,
+            Definitions::TRIGGER_NAME_BEFORE_UPDATE_SET_VERSION,
+            Definitions::TRIGGER_NAME_AFTER_UPDATE_INSERT_VERSION,
+        ];
+
+        $sql = [];
+        foreach ($suffixes as $suffix) {
+            $triggerName = $this->identifierHelper->buildTriggerName($tableName, $suffix);
+            $sql[] = sprintf(
+                'DROP TRIGGER IF EXISTS %s.%s',
+                $quotedDb,
+                $platform->quoteSingleIdentifier($triggerName),
+            );
+        }
+
+        return $sql;
     }
 }

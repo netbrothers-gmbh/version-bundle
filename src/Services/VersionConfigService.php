@@ -15,21 +15,23 @@ namespace NetBrothers\VersionBundle\Services;
 
 final readonly class VersionConfigService
 {
-    private const array DEFAULT_IGNORE_COLUMNS = ['id', 'version', 'created_at', 'updated_at'];
-
+    /**
+     * @param array{ignore_tables?: string[], ignore_columns?: string[]} $config
+     */
     public function __construct(
         private array $config
     ) {
     }
 
+    /** @return string[] */
     public function getIgnoreTables(): array
     {
-        return $this->config['ignore_tables'] ?? [];
+        return array_values(array_unique($this->config['ignore_tables'] ?? []));
     }
 
+    /** @return string[] */
     public function getIgnoreColumns(): array
     {
-        $userDefined = $this->config['ignore_columns'] ?? [];
-        return array_unique(array_merge(self::DEFAULT_IGNORE_COLUMNS, $userDefined));
+        return array_values(array_unique($this->config['ignore_columns'] ?? []));
     }
 }
