@@ -43,9 +43,8 @@ final class MakeVersionCommand extends Command
     {
         $this
             ->addArgument('tableName', InputArgument::OPTIONAL, 'Work only on this table')
-            ->addOption('create-trigger', null, InputOption::VALUE_NONE, 'Drop triggers, create missing version tables, recreate triggers')
-            ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop triggers, drop version tables')
-            ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop triggers')
+            ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop triggers and version tables')
+            ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop triggers only')
             ->addOption('sql', null, InputOption::VALUE_NONE, 'Print the SQL statements without doing anything')
             ->addOption('summary', null, InputOption::VALUE_NONE, 'Print a human readable summary of what the command would do');
     }
@@ -56,20 +55,28 @@ final class MakeVersionCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $isDropVersion = (bool) $input->getOption('drop-version');
+        $isDropTrigger = (bool) $input->getOption('drop-trigger');
+
+        if ($isDropVersion && $isDropTrigger) {
+            $io->error('Options --drop-trigger and --drop-version cannot be used together.');
+            return Command::FAILURE;
+        }
+
         $tableName = $input->getArgument('tableName');
 
         try {
             $jobs = (null !== $tableName)
-                ? $this->jobService->getJobForOneTable($tableName)
+                ? $this->jobService->getJobForOneTable((string) $tableName)
                 : $this->jobService->getJobsForAllTables();
         } catch (\Exception $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
-        $sql = $this->prepareSql($jobs, $input);
+        $sql = $this->prepareSql($jobs, $isDropVersion, $isDropTrigger);
 
         $io->newLine();
-        $this->printStatistic($io, $jobs);
+        $this->printStatistic($io, $jobs, $isDropVersion, $isDropTrigger);
         $io->newLine();
 
         if ($input->getOption('summary')) {
@@ -81,7 +88,7 @@ final class MakeVersionCommand extends Command
         }
 
         $io->newLine(2);
-        if ($this->jobService->hasError()) {
+        if (!$isDropVersion && !$isDropTrigger && $this->jobService->hasError()) {
             $this->printReport($io, $jobs);
             $io->newLine(2);
             $io->note('Operation canceled due to errors.');
@@ -90,7 +97,7 @@ final class MakeVersionCommand extends Command
 
         $this->executeService->execute($sql);
 
-        if ($this->jobService->hasWarning()) {
+        if (!$isDropVersion && !$isDropTrigger && $this->jobService->hasWarning()) {
             $this->printReport($io, $jobs);
         }
 
@@ -99,27 +106,50 @@ final class MakeVersionCommand extends Command
     }
 
     /**
+     * @param array{
+     *      'DropTrigger': string[],
+     *      'CreateTrigger': string[],
+     *      'DropVersion': string[],
+     *      'CreateVersion': string[],
+     *      'Reports': string[],
+     * } $jobs
+     * @return string[]
      * @throws Exception
      */
-    private function prepareSql(array $jobs, InputInterface $input): array
+    private function prepareSql(array $jobs, bool $isDropVersion, bool $isDropTrigger): array
     {
         $sql = [];
         $tableNames = $this->jobService->getTableNames();
 
-        foreach ($tableNames as $tableName) {
-            if ($input->getOption('drop-version')) {
+        if ($isDropVersion) {
+            foreach ($tableNames as $tableName) {
                 $sql = array_merge($sql, $this->generateService->dropVersionTableAndTriggersInOriginTable($tableName));
-            } elseif ($input->getOption('drop-trigger')) {
+            }
+            foreach ($jobs['DropVersion'] as $orphanedVersionTable) {
+                $sql = array_merge($sql, $this->generateService->dropOrphanedVersionTable($orphanedVersionTable));
+            }
+            return $sql;
+        }
+
+        if ($isDropTrigger) {
+            foreach ($tableNames as $tableName) {
                 $sql = array_merge($sql, $this->generateService->dropTriggers($tableName));
-            } else {
-                if (in_array($tableName, $jobs['DropTrigger'], true)) {
-                    $sql = array_merge($sql, $this->generateService->dropTriggers($tableName));
-                }
-                if (in_array($tableName, $jobs['CreateVersion'], true)) {
-                    $sql = array_merge($sql, $this->generateService->createVersionAndTriggers($tableName));
-                } elseif (in_array($tableName, $jobs['CreateTrigger'], true)) {
-                    $sql = array_merge($sql, $this->generateService->createTriggers($tableName));
-                }
+            }
+            return $sql;
+        }
+
+        foreach ($jobs['DropVersion'] as $orphanedVersionTable) {
+            $sql = array_merge($sql, $this->generateService->dropOrphanedVersionTable($orphanedVersionTable));
+        }
+
+        foreach ($tableNames as $tableName) {
+            if (in_array($tableName, $jobs['DropTrigger'], true)) {
+                $sql = array_merge($sql, $this->generateService->dropTriggers($tableName));
+            }
+            if (in_array($tableName, $jobs['CreateVersion'], true)) {
+                $sql = array_merge($sql, $this->generateService->createVersionAndTriggers($tableName));
+            } elseif (in_array($tableName, $jobs['CreateTrigger'], true)) {
+                $sql = array_merge($sql, $this->generateService->createTriggers($tableName));
             }
         }
         return $sql;
@@ -155,12 +185,41 @@ final class MakeVersionCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function printStatistic(SymfonyStyle $io, array $jobs): void
+    /**
+     * @throws Exception
+     */
+    private function printStatistic(SymfonyStyle $io, array $jobs, bool $isDropVersion, bool $isDropTrigger): void
     {
-        $io->writeln("Handling " . count($this->jobService->getTableNames()) . " tables:");
-        $io->writeln("Drop Versions: " . count($jobs['DropVersion']));
-        $io->writeln("Drop Triggers: " . count($jobs['DropTrigger']));
-        $io->writeln("Create Version: " . count($jobs['CreateVersion']));
-        $io->writeln("Create Triggers: " . count($jobs['CreateTrigger']));
+        $tableNames = $this->jobService->getTableNames();
+
+        if ($isDropVersion) {
+            $tablesWithVersion = 0;
+            foreach ($tableNames as $tableName) {
+                if ($this->generateService->hasVersionTable($tableName)) {
+                    $tablesWithVersion++;
+                }
+            }
+            $io->writeln('Handling ' . (count($tableNames) + count($jobs['DropVersion'])) . ' tables:');
+            $io->writeln('Drop Versions: ' . ($tablesWithVersion + count($jobs['DropVersion'])));
+            $io->writeln('Drop Triggers: ' . $tablesWithVersion);
+            $io->writeln('Create Version: 0');
+            $io->writeln('Create Triggers: 0');
+            return;
+        }
+
+        if ($isDropTrigger) {
+            $io->writeln('Handling ' . count($tableNames) . ' tables:');
+            $io->writeln('Drop Versions: 0');
+            $io->writeln('Drop Triggers: ' . count($tableNames));
+            $io->writeln('Create Version: 0');
+            $io->writeln('Create Triggers: 0');
+            return;
+        }
+
+        $io->writeln('Handling ' . (count($tableNames) + count($jobs['DropVersion'])) . ' tables:');
+        $io->writeln('Drop Versions: ' . count($jobs['DropVersion']));
+        $io->writeln('Drop Triggers: ' . count($jobs['DropTrigger']));
+        $io->writeln('Create Version: ' . count($jobs['CreateVersion']));
+        $io->writeln('Create Triggers: ' . count($jobs['CreateTrigger']));
     }
 }

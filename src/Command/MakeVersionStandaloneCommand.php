@@ -26,34 +26,37 @@ use NetBrothers\VersionBundle\Services\VersionConfigService;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Container\NotFoundExceptionInterface;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Exception\ExceptionInterface;
-use \Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
-    name: 'netbrothers:version-standalone',
+    name: self::COMMAND_NAME,
     description: 'Create version tables and triggers (standalone mode).'
 )]
 final class MakeVersionStandaloneCommand extends Command
 {
+    public const string COMMAND_NAME = 'netbrothers:version-standalone';
+
     private ?EntityManagerInterface $entityManager = null;
 
     protected function configure(): void
     {
         $this
             ->addArgument('tableName', InputArgument::OPTIONAL, 'Work only on this table')
-            ->addOption('create-trigger', null, InputOption::VALUE_NONE, 'Drop triggers, create missing version tables, recreate triggers')
-            ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop triggers, drop version tables')
-            ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop triggers')
+            ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop triggers and version tables')
+            ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop triggers only')
             ->addOption('sql', null, InputOption::VALUE_NONE, 'Print the SQL statements without doing anything')
             ->addOption('summary', null, InputOption::VALUE_NONE, 'Print a human readable summary of what the command would do')
             ->addOption('container-file', 'c', InputOption::VALUE_REQUIRED, 'Path to a PHP file which will return a PSR-11 compatible DI container.')
-            ->addOption('ignore-table', 'i', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Add as many `--ignore-table=` options as you need.')
-            ->addOption('exclude-column', 'x', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Add as many `--exclude-column=` options as you need.');
+            ->addOption('ignore-table', 'i', InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Add as many `--ignore-table=` options as you need.')
+            ->addOption('exclude-column', 'x', InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Add as many `--exclude-column=` options as you need.');
     }
 
     /**
@@ -63,7 +66,14 @@ final class MakeVersionStandaloneCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->initEntityManager($input);
+        $io = new SymfonyStyle($input, $output);
+
+        try {
+            $this->initEntityManager($input);
+        } catch (\Throwable $e) {
+            $io->error($e->getMessage());
+            return Command::FAILURE;
+        }
 
         // Manually build the service container
         $config = [
@@ -82,7 +92,21 @@ final class MakeVersionStandaloneCommand extends Command
 
         $symfonyCommand = new MakeVersionCommand($jobService, $generateService, $executeService);
 
-        return $symfonyCommand->run($input, $output);
+        $forwardedParameters = [];
+        $tableName = $input->getArgument('tableName');
+        if (null !== $tableName) {
+            $forwardedParameters['tableName'] = $tableName;
+        }
+        foreach (['drop-version', 'drop-trigger', 'sql', 'summary'] as $flag) {
+            if ($input->getOption($flag)) {
+                $forwardedParameters['--' . $flag] = true;
+            }
+        }
+
+        $forwardedInput = new ArrayInput($forwardedParameters);
+        $forwardedInput->setInteractive($input->isInteractive());
+
+        return $symfonyCommand->run($forwardedInput, $output);
     }
 
     /**

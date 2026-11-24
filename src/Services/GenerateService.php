@@ -58,6 +58,37 @@ final class GenerateService
     }
 
     /**
+     * Drop an orphaned version table by its full table name.
+     *
+     * @param string $versionTableName full name of orphaned version table
+     * @return string[]
+     * @throws Exception
+     */
+    public function dropOrphanedVersionTable(string $versionTableName): array
+    {
+        if ($this->schemaManager->tableExists($versionTableName)) {
+            $originTableName = (string) preg_replace(
+                '/' . preg_quote(Definitions::VERSION_TABLE_NAME_POSTFIX, '/') . '$/',
+                '',
+                $versionTableName,
+            );
+
+            return [$this->versionTableService->dropVersionTable($this->databaseName, $originTableName)];
+        }
+        return [];
+    }
+
+    /**
+     * Check whether a version table exists for the given origin table.
+     *
+     * @throws Exception
+     */
+    public function hasVersionTable(string $tableName): bool
+    {
+        return $this->schemaManager->tableExists($tableName . Definitions::VERSION_TABLE_NAME_POSTFIX);
+    }
+
+    /**
      * dropping triggers in origin table
      *
      * @param string $tableName name of origin table

@@ -86,6 +86,9 @@ final class JobService
             'CreateVersion' => [],
             'Reports' => [],
         ];
+        $this->tableNames = [];
+        $this->warning = false;
+        $this->error = false;
     }
 
     /**
@@ -114,15 +117,16 @@ final class JobService
         $this->initJobs();
         $tables = $this->schema->getTables();
         foreach ($tables as $table) {
-            $tableName = $table->getObjectName()->toString();
+            $tableName = $table->getObjectName()->getUnqualifiedName()->getValue();
             if (in_array($tableName, $this->ignoreTables, true)) {
                 $this->jobs['Reports'][] = "Table " . $tableName . " is configured as ignored";
                 continue;
             }
             if ($this->isVersionTable($table)) {
                 if (!$this->originTableExists($table)) {
-                    $this->jobs['Reports'][] = "VersionTable " . $tableName . " has no origin table - you should dropping it!";
+                    $this->jobs['Reports'][] = "WARNING $tableName: orphaned version table (no origin table) - will be dropped";
                     $this->jobs['DropVersion'][] = $tableName;
+                    $this->warning = true;
                 }
                 continue;
             }
@@ -133,7 +137,7 @@ final class JobService
     }
 
     /**
-     * @throws SchemaException|\Exception
+     * @throws SchemaException|\InvalidArgumentException
      */
     public function getJobForOneTable(string $tableName): array
     {
@@ -143,17 +147,38 @@ final class JobService
             return $this->jobs;
         }
         if (!$this->schema->hasTable($tableName)) {
-            throw new \Exception("Table $tableName does not exist");
+            throw new \InvalidArgumentException(sprintf('Table "%s" does not exist.', $tableName));
         }
-        $this->findJobForTable($this->schema->getTable($tableName));
+
+        $table = $this->schema->getTable($tableName);
+        if ($this->isVersionTable($table)) {
+            if (!$this->originTableExists($table)) {
+                $this->jobs['Reports'][] = "WARNING $tableName: orphaned version table (no origin table) - will be dropped";
+                $this->jobs['DropVersion'][] = $tableName;
+                $this->warning = true;
+                return $this->jobs;
+            }
+            throw new \InvalidArgumentException(sprintf(
+                'Table "%s" is a version table. Please specify the origin table "%s" instead.',
+                $tableName,
+                $this->getOriginTableName($table),
+            ));
+        }
+
+        $this->findJobForTable($table);
+        $this->tableNames[] = $tableName;
         return $this->jobs;
     }
 
     private function originTableExists(Table $versionTable): bool
     {
-        $tName = $versionTable->getObjectName()->toString();
-        $orgName = preg_replace("/" . Definitions::VERSION_TABLE_NAME_POSTFIX . "$/", '', $tName);
-        return $this->schema->hasTable($orgName);
+        return $this->schema->hasTable($this->getOriginTableName($versionTable));
+    }
+
+    private function getOriginTableName(Table $versionTable): string
+    {
+        $tName = $versionTable->getObjectName()->getUnqualifiedName()->getValue();
+        return (string) preg_replace('/' . preg_quote(Definitions::VERSION_TABLE_NAME_POSTFIX, '/') . '$/', '', $tName);
     }
 
     /**
@@ -161,7 +186,7 @@ final class JobService
      */
     private function findJobForTable(Table $table): void
     {
-        $tName = $table->getObjectName()->toString();
+        $tName = $table->getObjectName()->getUnqualifiedName()->getValue();
         $versionTable = $this->getVersionTableFromOrigin($table);
         if (null === $versionTable) {
             if ($this->hasTableVersionColumn($table)) {
@@ -189,7 +214,7 @@ final class JobService
             $this->jobs['DropTrigger'][] = $tName;
             return;
         }
-        $this->jobs['Reports'][] = "WARNING $tName: no column version, but existing version table ";
+        $this->jobs['Reports'][] = "WARNING $tName: no column version, but existing version table";
         $this->jobs['Reports'][] = "$tName: drop triggers";
         $this->jobs['DropTrigger'][] = $tName;
         $this->warning = true;
@@ -200,7 +225,7 @@ final class JobService
      */
     private function getVersionTableFromOrigin(Table $table): ?Table
     {
-        $tName = $table->getObjectName()->toString();
+        $tName = $table->getObjectName()->getUnqualifiedName()->getValue();
         $versionTableName = $tName . Definitions::VERSION_TABLE_NAME_POSTFIX;
         if ($this->schema->hasTable($versionTableName)) {
             return $this->schema->getTable($versionTableName);
@@ -215,6 +240,9 @@ final class JobService
 
     private function isVersionTable(Table $table): bool
     {
-        return (bool) preg_match("/" . Definitions::VERSION_TABLE_NAME_POSTFIX . "$/", $table->getObjectName()->toString());
+        return str_ends_with(
+            $table->getObjectName()->getUnqualifiedName()->getValue(),
+            Definitions::VERSION_TABLE_NAME_POSTFIX,
+        );
     }
 }
