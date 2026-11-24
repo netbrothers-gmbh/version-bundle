@@ -75,18 +75,6 @@ final readonly class GenerateService
     }
 
     /**
-     * Check whether a version table exists for the given origin table.
-     *
-     * @throws Exception|\RuntimeException
-     */
-    public function hasVersionTable(string $tableName): bool
-    {
-        $versionTableName = $this->identifierHelper->buildVersionTableName($tableName);
-
-        return $this->connectionProvider->tableExists($versionTableName);
-    }
-
-    /**
      * Dropping triggers on origin table.
      *
      * @param string $tableName Name of origin table

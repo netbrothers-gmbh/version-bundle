@@ -21,16 +21,19 @@ final readonly class IdentifierHelper
 {
     private const int HASH_LENGTH = 8;
 
+    /** @return non-empty-string */
     public function buildVersionTableName(string $originTableName): string
     {
         return $this->buildIdentifier($originTableName, Definitions::VERSION_TABLE_NAME_POSTFIX);
     }
 
+    /** @return non-empty-string */
     public function buildTriggerName(string $originTableName, string $triggerSuffix): string
     {
         return $this->buildIdentifier($originTableName, '_' . $triggerSuffix);
     }
 
+    /** @return non-empty-string */
     public function buildForeignKeyName(string $originTableName): string
     {
         return $this->buildIdentifier(
@@ -46,6 +49,10 @@ final readonly class IdentifierHelper
      * Otherwise, `<prefix>` is truncated and combined with a deterministic
      * 8-character SHA-256 hash suffix so collisions are avoided and the
      * generated identifier never exceeds `$maxLength` characters.
+     *
+     * @param non-empty-string $suffix
+     * @param positive-int $maxLength
+     * @return non-empty-string
      */
     public function buildIdentifier(
         string $prefix,
@@ -62,12 +69,16 @@ final readonly class IdentifierHelper
         $prefixLength = $maxLength - $reserved;
 
         if ($prefixLength <= 0) {
-            return substr($hash . $suffix, 0, $maxLength);
+            /** @var non-empty-string $result */
+            $result = substr($hash . $suffix, 0, $maxLength);
+            return $result;
         }
 
         $truncatedPrefix = rtrim(substr($prefix, 0, $prefixLength), '_');
         if ($truncatedPrefix === '') {
-            return substr($hash . $suffix, 0, $maxLength);
+            /** @var non-empty-string $result */
+            $result = substr($hash . $suffix, 0, $maxLength);
+            return $result;
         }
 
         return $truncatedPrefix . '_' . $hash . $suffix;

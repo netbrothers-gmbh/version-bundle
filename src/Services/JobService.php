@@ -36,7 +36,6 @@ final class JobService
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
      *      'UpdateVersion': array<string, TableSyncPlan>,
-     *      'Reports': string[],
      * }
      */
     private array $jobs = [
@@ -45,7 +44,6 @@ final class JobService
         'DropVersion' => [],
         'CreateVersion' => [],
         'UpdateVersion' => [],
-        'Reports' => [],
     ];
 
     /** @var string[] */
@@ -53,9 +51,6 @@ final class JobService
 
     /** @var TableJobEntry[] */
     private array $entries = [];
-
-    private bool $warning = false;
-    private bool $error = false;
 
     /** @var array<string, Table> */
     private array $tables = [];
@@ -72,22 +67,6 @@ final class JobService
         $this->ignoreTables = $configService->getIgnoreTables();
     }
 
-    public function hasError(): bool
-    {
-        return $this->error;
-    }
-
-    public function hasWarning(): bool
-    {
-        return $this->warning;
-    }
-
-    /** @return string[] */
-    public function getReport(): array
-    {
-        return $this->jobs['Reports'];
-    }
-
     /** @return string[] */
     public function getTableNames(): array
     {
@@ -100,11 +79,6 @@ final class JobService
         return $this->entries;
     }
 
-    public function addTableName(string $tableName): void
-    {
-        $this->tableNames[] = $tableName;
-    }
-
     /**
      * Get jobs for all tables in the database.
      *
@@ -114,7 +88,6 @@ final class JobService
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
      *      'UpdateVersion': array<string, TableSyncPlan>,
-     *      'Reports': string[],
      * }
      * @throws Exception|\RuntimeException
      */
@@ -127,7 +100,6 @@ final class JobService
 
         foreach ($this->tables as $tableName => $table) {
             if (in_array($tableName, $this->ignoreTables, true)) {
-                $this->jobs['Reports'][] = 'Table ' . $tableName . ' is configured as ignored';
                 $this->entries[] = new TableJobEntry(
                     tableName: $tableName,
                     status: TableStatus::IGNORED,
@@ -137,7 +109,6 @@ final class JobService
             }
             if ($this->isVersionTableName($tableName)) {
                 if (!isset($this->versionToOriginMap[$tableName])) {
-                    $this->jobs['Reports'][] = "WARNING $tableName: orphaned version table (no origin table) - will be dropped";
                     $this->jobs['DropVersion'][] = $tableName;
                     $this->entries[] = new TableJobEntry(
                         tableName: $tableName,
@@ -145,7 +116,6 @@ final class JobService
                         versionTableName: $tableName,
                         note: 'No origin table found; version table will be dropped',
                     );
-                    $this->warning = true;
                 }
                 continue;
             }
@@ -163,7 +133,6 @@ final class JobService
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
      *      'UpdateVersion': array<string, TableSyncPlan>,
-     *      'Reports': string[],
      * }
      * @throws Exception|\InvalidArgumentException|\RuntimeException
      */
@@ -173,7 +142,6 @@ final class JobService
         $this->loadTables();
 
         if (in_array($tableName, $this->ignoreTables, true)) {
-            $this->jobs['Reports'][] = 'Table ' . $tableName . ' is configured as ignored';
             $this->entries[] = new TableJobEntry(
                 tableName: $tableName,
                 status: TableStatus::IGNORED,
@@ -187,7 +155,6 @@ final class JobService
 
         if ($this->isVersionTableName($tableName)) {
             if (!isset($this->versionToOriginMap[$tableName])) {
-                $this->jobs['Reports'][] = "WARNING $tableName: orphaned version table (no origin table) - will be dropped";
                 $this->jobs['DropVersion'][] = $tableName;
                 $this->entries[] = new TableJobEntry(
                     tableName: $tableName,
@@ -195,7 +162,6 @@ final class JobService
                     versionTableName: $tableName,
                     note: 'No origin table found; version table will be dropped',
                 );
-                $this->warning = true;
                 return $this->jobs;
             }
             throw new \InvalidArgumentException(sprintf(
@@ -222,12 +188,9 @@ final class JobService
             'DropVersion' => [],
             'CreateVersion' => [],
             'UpdateVersion' => [],
-            'Reports' => [],
         ];
         $this->tableNames = [];
         $this->entries = [];
-        $this->warning = false;
-        $this->error = false;
     }
 
     /**
@@ -260,7 +223,6 @@ final class JobService
 
         if ($versionTable === null) {
             if ($this->hasTableVersionColumn($table)) {
-                $this->jobs['Reports'][] = "$tName: drop triggers, create version table, create triggers";
                 $this->jobs['DropTrigger'][] = $tName;
                 $this->jobs['CreateVersion'][] = $tName;
                 $this->jobs['CreateTrigger'][] = $tName;
@@ -271,7 +233,6 @@ final class JobService
                     note: sprintf('Create %s, backfill rows, create triggers', $versionTableName),
                 );
             } else {
-                $this->jobs['Reports'][] = "$tName: drop triggers";
                 $this->jobs['DropTrigger'][] = $tName;
                 $this->entries[] = new TableJobEntry(
                     tableName: $tName,
@@ -289,17 +250,6 @@ final class JobService
 
             if ($syncPlan->hasChanges()) {
                 $this->jobs['UpdateVersion'][$tName] = $syncPlan;
-                $changes = $this->formatSyncChanges($syncPlan);
-                $this->jobs['Reports'][] = "$tName: drop triggers, update version table ($changes), create triggers";
-                if ($syncPlan->droppedColumns !== []) {
-                    $this->jobs['Reports'][] = sprintf(
-                        'WARNING %s: dropping column(s) from %s (%s)',
-                        $tName,
-                        $syncPlan->versionTableName,
-                        implode(', ', $syncPlan->droppedColumns),
-                    );
-                    $this->warning = true;
-                }
                 $this->entries[] = new TableJobEntry(
                     tableName: $tName,
                     status: TableStatus::UPDATE,
@@ -307,7 +257,6 @@ final class JobService
                     syncPlan: $syncPlan,
                 );
             } else {
-                $this->jobs['Reports'][] = "$tName: up to date (drop triggers, create triggers)";
                 $this->entries[] = new TableJobEntry(
                     tableName: $tName,
                     status: TableStatus::UP_TO_DATE,
@@ -319,8 +268,6 @@ final class JobService
             return;
         }
 
-        $this->jobs['Reports'][] = "WARNING $tName: no column version, but existing version table";
-        $this->jobs['Reports'][] = "$tName: drop triggers";
         $this->jobs['DropTrigger'][] = $tName;
         $this->entries[] = new TableJobEntry(
             tableName: $tName,
@@ -328,23 +275,6 @@ final class JobService
             versionTableName: $versionTableName,
             note: sprintf('No version column, but %s still exists (dropping triggers only)', $versionTableName),
         );
-        $this->warning = true;
-    }
-
-    private function formatSyncChanges(TableSyncPlan $plan): string
-    {
-        $parts = [];
-        foreach ($plan->addedColumns as $col) {
-            $parts[] = '+ADD ' . $col;
-        }
-        foreach ($plan->modifiedColumns as $col) {
-            $parts[] = '~MODIFY ' . $col;
-        }
-        foreach ($plan->droppedColumns as $col) {
-            $parts[] = '-DROP ' . $col;
-        }
-
-        return implode(', ', $parts);
     }
 
     private function hasTableVersionColumn(Table $table): bool

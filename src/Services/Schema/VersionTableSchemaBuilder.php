@@ -17,6 +17,7 @@ use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint\ReferentialAction;
 use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Types\Exception\TypesException;
 use NetBrothers\VersionBundle\Services\Sql\IdentifierHelper;
 
 /**
@@ -34,6 +35,7 @@ final readonly class VersionTableSchemaBuilder
 
     /**
      * @param string[] $ignoreColumns Non-PK column names to omit from the version table
+     * @throws TypesException
      */
     public function buildExpectedVersionTable(Table $originTable, array $ignoreColumns = []): Table
     {

@@ -2,35 +2,126 @@ name: Build Workflow
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main", "5.0"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main", "5.0"]
 
 permissions:
   contents: read
 
 jobs:
-  build:
-
+  quality:
+    name: Quality & Unit Tests (PHP ${{ matrix.php }})
     runs-on: ubuntu-24.04
 
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.4", "8.5"]
+
     steps:
-    - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Validate composer.json and composer.lock
-      run: composer validate
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring
+          coverage: none
 
-    - name: Cache Composer packages
-      id: composer-cache
-      uses: actions/cache@v3
-      with:
-        path: vendor
-        key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-php-
+      - name: Validate composer.json
+        run: composer validate --strict
 
-    - name: Install dependencies
-      run: composer install --prefer-dist --no-progress
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
 
-    - name: Static Analysis
-      run: composer run-script static-analysis
+      - name: Static analysis (PHPStan)
+        run: composer run static-analysis
+
+      - name: Unit tests (PHPUnit)
+        run: composer run test:unit
+
+  integration-mariadb:
+    name: Integration Tests (PHP ${{ matrix.php }} / MariaDB 11.4)
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.4", "8.5"]
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: version_bundle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Integration tests (MariaDB 11.4)
+        env:
+          TEST_DATABASE_URL: pdo-mysql://root:root@127.0.0.1:3306/version_bundle_test
+        run: composer run test:integration
+
+  integration-mysql:
+    name: Integration Tests (PHP ${{ matrix.php }} / MySQL 8.4)
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.4", "8.5"]
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: version_bundle_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Integration tests (MySQL 8.4)
+        env:
+          TEST_DATABASE_URL: pdo-mysql://root:root@127.0.0.1:3306/version_bundle_test
+        run: composer run test:integration
