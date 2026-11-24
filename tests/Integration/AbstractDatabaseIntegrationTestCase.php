@@ -54,6 +54,7 @@ abstract class AbstractDatabaseIntegrationTestCase extends TestCase
 
         $this->connection = DriverManager::getConnection($params);
         $ormConfig = ORMSetup::createAttributeMetadataConfig([], true);
+        $ormConfig->enableNativeLazyObjects(true);
         $this->entityManager = new EntityManager($this->connection, $ormConfig);
 
         $this->resetDatabase();

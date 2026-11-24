@@ -49,7 +49,9 @@ use Psr\Container\NotFoundExceptionInterface;
 
 $parser = new DsnParser(['mysql' => 'pdo_mysql', 'pdo-mysql' => 'pdo_mysql', 'mariadb' => 'pdo_mysql']);
 $connection = DriverManager::getConnection($parser->parse(%s));
-$em = new EntityManager($connection, ORMSetup::createAttributeMetadataConfig([], true));
+$ormConfig = ORMSetup::createAttributeMetadataConfig([], true);
+$ormConfig->enableNativeLazyObjects(true);
+$em = new EntityManager($connection, $ormConfig);
 
 return new class($em) implements ContainerInterface {
     public function __construct(private readonly EntityManagerInterface $em) {}
