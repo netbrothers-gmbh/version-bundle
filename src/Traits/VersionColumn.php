@@ -17,9 +17,6 @@ use Doctrine\ORM\Mapping as ORM;
 
 trait VersionColumn
 {
-    /**
-     * @ORM\Column(type="integer", nullable=false, options={"default": 1})
-     */
     #[ORM\Column(type: 'integer', nullable: false, options: ['default' => 1])]
     protected int $version = 1;
 

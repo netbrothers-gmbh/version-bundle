@@ -5,7 +5,10 @@ parameters:
     excludePaths:
         analyseAndScan:
             - src/NetBrothersVersionBundle.php
-            - src/DependencyInjection/*
+    ignoreErrors:
+        -
+            identifier: trait.unused
+            path: src/Traits/VersionColumn.php
 
 includes:
     - vendor/phpstan/phpstan-deprecation-rules/rules.neon

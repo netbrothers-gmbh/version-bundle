@@ -1,6 +1,9 @@
 #!/usr/bin/env php
 <?php
 
+declare(strict_types=1);
+
+use Composer\InstalledVersions;
 use NetBrothers\VersionBundle\Command\MakeVersionStandaloneCommand;
 use Symfony\Component\Console\Application;
 
@@ -20,9 +23,15 @@ if (file_exists($libModeAutoload)) {
     require __DIR__ . '/../vendor/autoload.php';
 }
 
-$cliApp = new Application;
-$cliApp->setName('NetBrothers GmbH - MariaDB/MySQL versioning with triggers');
-$cliApp->setVersion('1.0.0');
-$cliApp->add(new MakeVersionStandaloneCommand);
-$cliApp->setDefaultCommand(MakeVersionStandaloneCommand::getDefaultName());
+$version = '5.0.0-dev';
+if (class_exists(InstalledVersions::class) && InstalledVersions::isInstalled('netbrothers-gmbh/version-bundle')) {
+    $version = InstalledVersions::getPrettyVersion('netbrothers-gmbh/version-bundle') ?? $version;
+}
+
+$cliApp = new Application(
+    'NetBrothers GmbH - MariaDB/MySQL versioning with triggers',
+    $version,
+);
+$cliApp->addCommand(new MakeVersionStandaloneCommand());
+$cliApp->setDefaultCommand(MakeVersionStandaloneCommand::COMMAND_NAME, true);
 $cliApp->run();
