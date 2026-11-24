@@ -13,33 +13,71 @@ declare(strict_types=1);
 
 namespace NetBrothers\VersionBundle\Services\Sql;
 
-/**
- * Generates SQL for dropping/creating version tables.
- */
-final class VersionTable
-{
-    /**
-     * Returns all SQL statements needed to create a version table with its constraints.
-     *
-     * @return string[]
-     */
-    public function getSqlCreate(string $databaseName, string $tableName): array
-    {
-        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Schema\Table;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
 
-        return [
-            sprintf(Definitions::SQL_CREATE_TABLE, $databaseName, $versionTableName, $databaseName, $tableName),
-            sprintf(Definitions::SQL_ADD_PK_TO_VERSION, $databaseName, $versionTableName),
-            sprintf(Definitions::SQL_ADD_CONSTRAINT, $databaseName, $versionTableName, $versionTableName, $tableName),
-        ];
+/**
+ * Generates DBAL-based DDL for creating/dropping version tables and safely backfilling existing rows.
+ */
+final readonly class VersionTable
+{
+    public function __construct(
+        private VersionTableSchemaBuilder $schemaBuilder,
+    ) {
     }
 
     /**
-     * Returns the SQL statement to drop a version table.
+     * Returns all SQL statements needed to create a version table via DBAL DDL
+     * and safely backfill existing rows (normalizing NULL version values to 1).
+     *
+     * @return string[]
+     * @throws Exception
      */
-    public function dropVersionTable(string $databaseName, string $tableName): string
+    public function getSqlCreate(Table $originTable, AbstractPlatform $platform): array
     {
-        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
-        return sprintf(Definitions::SQL_DROP_TABLE, $databaseName, $versionTableName);
+        $expectedVersionTable = $this->schemaBuilder->buildExpectedVersionTable($originTable);
+        $sql = $platform->getCreateTableSQL($expectedVersionTable);
+
+        $originTableName = $originTable->getObjectName()->getUnqualifiedName()->getValue();
+        $versionTableName = $expectedVersionTable->getObjectName()->getUnqualifiedName()->getValue();
+
+        $quotedOrigin = $platform->quoteSingleIdentifier($originTableName);
+        $quotedVersionTable = $platform->quoteSingleIdentifier($versionTableName);
+        $quotedVersionColumn = $platform->quoteSingleIdentifier('version');
+
+        $quotedColumns = [];
+        foreach ($originTable->getColumns() as $column) {
+            $quotedColumns[] = $platform->quoteSingleIdentifier(
+                $column->getObjectName()->getIdentifier()->getValue(),
+            );
+        }
+
+        $sql[] = sprintf(
+            'UPDATE %s SET %s = 1 WHERE %s IS NULL',
+            $quotedOrigin,
+            $quotedVersionColumn,
+            $quotedVersionColumn,
+        );
+
+        $columnList = implode(', ', $quotedColumns);
+        $sql[] = sprintf(
+            'INSERT INTO %s (%s) SELECT %s FROM %s',
+            $quotedVersionTable,
+            $columnList,
+            $columnList,
+            $quotedOrigin,
+        );
+
+        return $sql;
+    }
+
+    /**
+     * Returns the SQL statement to drop a version table by its full table name.
+     */
+    public function dropVersionTable(string $versionTableName, AbstractPlatform $platform): string
+    {
+        return sprintf('DROP TABLE IF EXISTS %s', $platform->quoteSingleIdentifier($versionTableName));
     }
 }

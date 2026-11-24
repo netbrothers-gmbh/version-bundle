@@ -14,125 +14,144 @@ declare(strict_types=1);
 namespace NetBrothers\VersionBundle\Services;
 
 use Doctrine\DBAL\Exception;
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
-use Doctrine\ORM\EntityManagerInterface;
 use NetBrothers\VersionBundle\Services\Sql\CreateTrigger;
-use NetBrothers\VersionBundle\Services\Sql\Definitions;
 use NetBrothers\VersionBundle\Services\Sql\DropTrigger;
+use NetBrothers\VersionBundle\Services\Sql\IdentifierHelper;
 use NetBrothers\VersionBundle\Services\Sql\VersionTable;
 
-final class GenerateService
+final readonly class GenerateService
 {
-    private AbstractSchemaManager $schemaManager;
-    private string $databaseName;
-
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly VersionTable $versionTableService,
-        private readonly DropTrigger $dropTriggerService,
-        private readonly CreateTrigger $createTriggerService
+        private DatabaseConnectionProvider $connectionProvider,
+        private VersionTable $versionTableService,
+        private DropTrigger $dropTriggerService,
+        private CreateTrigger $createTriggerService,
+        private IdentifierHelper $identifierHelper,
     ) {
-        $connection = $this->entityManager->getConnection();
-        $connection->getConfiguration()->setSchemaAssetsFilter(static fn () => true);
-        $this->schemaManager = $connection->createSchemaManager();
-        $this->databaseName = $connection->getDatabase();
     }
 
     /**
-     * dropping triggers in origin table / dropping version table
+     * Dropping triggers on origin table and dropping the version table.
      *
-     * @param string $tableName name of origin table
+     * @param string $tableName Name of origin table
      * @return string[]
-     * @throws Exception
+     * @throws Exception|\RuntimeException
      */
     public function dropVersionTableAndTriggersInOriginTable(string $tableName): array
     {
         $sql = [];
-        $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
+        $versionTableName = $this->identifierHelper->buildVersionTableName($tableName);
 
-        if ($this->schemaManager->tableExists($versionTableName)) {
+        if ($this->connectionProvider->tableExists($versionTableName)) {
             $sql = $this->dropTriggers($tableName);
-            $sql[] = $this->versionTableService->dropVersionTable($this->databaseName, $tableName);
+            $sql[] = $this->versionTableService->dropVersionTable(
+                $versionTableName,
+                $this->connectionProvider->getPlatform(),
+            );
         }
+
         return $sql;
     }
 
     /**
-     * Drop an orphaned version table by its full table name.
+     * Drop an orphaned version table directly by its full table name.
      *
-     * @param string $versionTableName full name of orphaned version table
+     * @param string $versionTableName Full name of orphaned version table
      * @return string[]
-     * @throws Exception
+     * @throws Exception|\RuntimeException
      */
     public function dropOrphanedVersionTable(string $versionTableName): array
     {
-        if ($this->schemaManager->tableExists($versionTableName)) {
-            $originTableName = (string) preg_replace(
-                '/' . preg_quote(Definitions::VERSION_TABLE_NAME_POSTFIX, '/') . '$/',
-                '',
-                $versionTableName,
-            );
-
-            return [$this->versionTableService->dropVersionTable($this->databaseName, $originTableName)];
+        if ($this->connectionProvider->tableExists($versionTableName)) {
+            return [
+                $this->versionTableService->dropVersionTable(
+                    $versionTableName,
+                    $this->connectionProvider->getPlatform(),
+                ),
+            ];
         }
+
         return [];
     }
 
     /**
      * Check whether a version table exists for the given origin table.
      *
-     * @throws Exception
+     * @throws Exception|\RuntimeException
      */
     public function hasVersionTable(string $tableName): bool
     {
-        return $this->schemaManager->tableExists($tableName . Definitions::VERSION_TABLE_NAME_POSTFIX);
+        $versionTableName = $this->identifierHelper->buildVersionTableName($tableName);
+
+        return $this->connectionProvider->tableExists($versionTableName);
     }
 
     /**
-     * dropping triggers in origin table
+     * Dropping triggers on origin table.
      *
-     * @param string $tableName name of origin table
+     * @param string $tableName Name of origin table
      * @return string[]
-     * @throws Exception
+     * @throws Exception|\RuntimeException
      */
     public function dropTriggers(string $tableName): array
     {
-        if ($this->schemaManager->tableExists($tableName)) {
-            return $this->dropTriggerService->getSql($this->databaseName, $tableName);
+        if ($this->connectionProvider->tableExists($tableName)) {
+            return $this->dropTriggerService->getSql(
+                $this->connectionProvider->getDatabaseName(),
+                $tableName,
+                $this->connectionProvider->getPlatform(),
+            );
         }
+
         return [];
     }
 
     /**
-     * @param string $tableName name of origin table
+     * Creating version table, backfilling existing rows, and creating triggers.
+     *
+     * @param string $tableName Name of origin table
      * @return string[]
-     * @throws Exception
+     * @throws Exception|\RuntimeException
      */
     public function createVersionAndTriggers(string $tableName): array
     {
         $sql = [];
-        if ($this->schemaManager->tableExists($tableName)) {
-            $versionTableName = $tableName . Definitions::VERSION_TABLE_NAME_POSTFIX;
-            if (!$this->schemaManager->tableExists($versionTableName)) {
-                $sql = $this->versionTableService->getSqlCreate($this->databaseName, $tableName);
-                foreach ($this->createTriggerService->getSql($this->databaseName, $tableName) as $query) {
+        if ($this->connectionProvider->tableExists($tableName)) {
+            $versionTableName = $this->identifierHelper->buildVersionTableName($tableName);
+            if (!$this->connectionProvider->tableExists($versionTableName)) {
+                $originTable = $this->connectionProvider->introspectTable($tableName);
+                $platform = $this->connectionProvider->getPlatform();
+                $databaseName = $this->connectionProvider->getDatabaseName();
+
+                $sql = $this->versionTableService->getSqlCreate($originTable, $platform);
+                foreach ($this->createTriggerService->getSql($databaseName, $originTable, $platform) as $query) {
                     $sql[] = $query;
                 }
             }
         }
+
         return $sql;
     }
 
     /**
-     * @param string $tableName
+     * Creating triggers on origin table.
+     *
+     * @param string $tableName Name of origin table
      * @return string[]
-     * @throws Exception
+     * @throws Exception|\RuntimeException
      */
     public function createTriggers(string $tableName): array
     {
-        if ($this->schemaManager->tableExists($tableName)) {
-            return $this->createTriggerService->getSql($this->databaseName, $tableName);
+        if ($this->connectionProvider->tableExists($tableName)) {
+            $originTable = $this->connectionProvider->introspectTable($tableName);
+
+            return $this->createTriggerService->getSql(
+                $this->connectionProvider->getDatabaseName(),
+                $originTable,
+                $this->connectionProvider->getPlatform(),
+            );
         }
+
         return [];
     }
 }
