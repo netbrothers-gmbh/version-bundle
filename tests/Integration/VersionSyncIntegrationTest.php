@@ -116,25 +116,33 @@ final class VersionSyncIntegrationTest extends AbstractDatabaseIntegrationTestCa
         );
         $id = (int) $this->connection->lastInsertId();
 
-        // Simulate Doctrine migration on origin table ONLY:
-        // 1. ADD NOT NULL with default, ADD DATETIME NOT NULL without default, ADD JSON NOT NULL, ADD TEXT NOT NULL
-        // 2. MODIFY VARCHAR(50) -> VARCHAR(255), DECIMAL(10,2) -> DECIMAL(12,4)
-        // 3. Backfill origin optional_note and tighten NULL -> NOT NULL (historical _version row still has NULL!)
-        // 4. DROP obsolete_col
-        $this->connection->executeStatement("UPDATE protocol SET optional_note = 'filled' WHERE optional_note IS NULL");
+        // Simulate real-world Doctrine migration on origin table ONLY:
+        // 1. Drop triggers before data-backfill migration steps
+        $dropTriggerTester = $this->createCommandTester();
+        self::assertSame(Command::SUCCESS, $dropTriggerTester->execute(['--drop-trigger' => true]));
+
+        // 2. Add new columns nullable, backfill existing origin rows, then tighten to NOT NULL without defaults
+        //    (historical rows in protocol_version still have optional_note = NULL!)
         $this->connection->executeStatement(<<<'SQL'
             ALTER TABLE protocol
                 ADD client_revision INT DEFAULT 0 NOT NULL,
-                ADD synced_at DATETIME NOT NULL DEFAULT '2026-01-01 00:00:00',
-                ADD payload JSON NOT NULL,
-                ADD notes LONGTEXT NOT NULL,
+                ADD synced_at DATETIME DEFAULT NULL,
+                ADD payload JSON DEFAULT NULL,
+                ADD notes LONGTEXT DEFAULT NULL,
                 MODIFY title VARCHAR(255) NOT NULL,
                 MODIFY amount DECIMAL(12, 4) DEFAULT NULL,
-                MODIFY optional_note VARCHAR(100) NOT NULL,
                 DROP COLUMN obsolete_col
         SQL);
-        // Remove the temporary default on synced_at so origin truly has DATETIME NOT NULL without default
-        $this->connection->executeStatement('ALTER TABLE protocol ALTER COLUMN synced_at DROP DEFAULT');
+        $this->connection->executeStatement(
+            "UPDATE protocol SET optional_note = 'filled', synced_at = '2026-01-01 00:00:00', payload = '{}', notes = 'initial'",
+        );
+        $this->connection->executeStatement(<<<'SQL'
+            ALTER TABLE protocol
+                MODIFY synced_at DATETIME NOT NULL,
+                MODIFY payload JSON NOT NULL,
+                MODIFY notes LONGTEXT NOT NULL,
+                MODIFY optional_note VARCHAR(100) NOT NULL
+        SQL);
 
         // Run netbrothers:version -> must sync protocol_version cleanly without strict-mode or NULL errors
         $syncTester = $this->createCommandTester();
