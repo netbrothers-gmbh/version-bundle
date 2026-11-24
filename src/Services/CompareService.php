@@ -16,9 +16,10 @@ namespace NetBrothers\VersionBundle\Services;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\SchemaException;
 use Doctrine\DBAL\Schema\Table;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
 
 /**
- * Provides check, if column definitions are identical in two tables.
+ * Provides check, if column definitions in a version table match the expected version schema derived from the origin table.
  */
 final class CompareService
 {
@@ -29,8 +30,10 @@ final class CompareService
     /** @var string[] */
     private readonly array $excludeColumnNames;
 
-    public function __construct(VersionConfigService $configService)
-    {
+    public function __construct(
+        VersionConfigService $configService,
+        private readonly VersionTableSchemaBuilder $schemaBuilder,
+    ) {
         $this->excludeColumnNames = $configService->getIgnoreColumns();
     }
 
@@ -40,19 +43,21 @@ final class CompareService
     }
 
     /**
-     * Check if column definitions are the same in both tables.
+     * Check if column definitions of `$versionTable` match the expected version schema derived from `$originTable`.
      */
-    public function compare(Table $tableOne, Table $tableTwo): bool
+    public function compare(Table $originTable, Table $versionTable): bool
     {
         $this->errors = [];
         $this->errMessage = null;
 
-        $columnsInTableOne = $tableOne->getColumns();
-        if (!$this->compareColumns($columnsInTableOne, $tableTwo)) {
+        $expectedVersionTable = $this->schemaBuilder->buildExpectedVersionTable($originTable);
+
+        $columnsInExpected = $expectedVersionTable->getColumns();
+        if (!$this->compareColumns($columnsInExpected, $versionTable)) {
             return false;
         }
-        $columnsInTableTwo = $tableTwo->getColumns();
-        if (!$this->compareColumns($columnsInTableTwo, $tableOne)) {
+        $columnsInActual = $versionTable->getColumns();
+        if (!$this->compareColumns($columnsInActual, $expectedVersionTable)) {
             return false;
         }
         return true;

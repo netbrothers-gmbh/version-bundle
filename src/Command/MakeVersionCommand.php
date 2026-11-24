@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace NetBrothers\VersionBundle\Command;
 
 use Doctrine\DBAL\Exception;
+use NetBrothers\VersionBundle\Services\DatabaseConnectionProvider;
 use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
@@ -32,6 +33,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class MakeVersionCommand extends Command
 {
     public function __construct(
+        private readonly DatabaseConnectionProvider $connectionProvider,
         private readonly JobService $jobService,
         private readonly GenerateService $generateService,
         private readonly ExecuteService $executeService
@@ -46,7 +48,8 @@ final class MakeVersionCommand extends Command
             ->addOption('drop-version', null, InputOption::VALUE_NONE, 'Drop triggers and version tables')
             ->addOption('drop-trigger', null, InputOption::VALUE_NONE, 'Drop triggers only')
             ->addOption('sql', null, InputOption::VALUE_NONE, 'Print the SQL statements without doing anything')
-            ->addOption('summary', null, InputOption::VALUE_NONE, 'Print a human readable summary of what the command would do');
+            ->addOption('summary', null, InputOption::VALUE_NONE, 'Print a human readable summary of what the command would do')
+            ->addOption('em', null, InputOption::VALUE_REQUIRED, 'The Doctrine entity manager to use for this command');
     }
 
     /**
@@ -62,6 +65,9 @@ final class MakeVersionCommand extends Command
             $io->error('Options --drop-trigger and --drop-version cannot be used together.');
             return Command::FAILURE;
         }
+
+        $emName = $input->getOption('em');
+        $this->connectionProvider->selectEntityManager(is_string($emName) && $emName !== '' ? $emName : null);
 
         $tableName = $input->getArgument('tableName');
 

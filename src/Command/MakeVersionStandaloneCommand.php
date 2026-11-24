@@ -16,11 +16,14 @@ namespace NetBrothers\VersionBundle\Command;
 use Doctrine\ORM\EntityManagerInterface;
 use Exception;
 use NetBrothers\VersionBundle\Services\CompareService;
+use NetBrothers\VersionBundle\Services\DatabaseConnectionProvider;
 use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
 use NetBrothers\VersionBundle\Services\Sql\CreateTrigger;
 use NetBrothers\VersionBundle\Services\Sql\DropTrigger;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
+use NetBrothers\VersionBundle\Services\Sql\IdentifierHelper;
 use NetBrothers\VersionBundle\Services\Sql\VersionTable;
 use NetBrothers\VersionBundle\Services\VersionConfigService;
 use Psr\Container\ContainerExceptionInterface;
@@ -82,15 +85,24 @@ final class MakeVersionStandaloneCommand extends Command
         ];
 
         $configService = new VersionConfigService($config);
-        $compareService = new CompareService($configService);
-        $versionTable = new VersionTable();
-        $dropTrigger = new DropTrigger();
-        $createTrigger = new CreateTrigger($this->entityManager);
-        $generateService = new GenerateService($this->entityManager, $versionTable, $dropTrigger, $createTrigger);
-        $jobService = new JobService($this->entityManager, $compareService, $configService);
-        $executeService = new ExecuteService($this->entityManager);
+        $connectionProvider = new DatabaseConnectionProvider($this->entityManager);
+        $identifierHelper = new IdentifierHelper();
+        $schemaBuilder = new VersionTableSchemaBuilder($identifierHelper);
+        $compareService = new CompareService($configService, $schemaBuilder);
+        $versionTable = new VersionTable($schemaBuilder);
+        $dropTrigger = new DropTrigger($identifierHelper);
+        $createTrigger = new CreateTrigger($identifierHelper);
+        $generateService = new GenerateService(
+            $connectionProvider,
+            $versionTable,
+            $dropTrigger,
+            $createTrigger,
+            $identifierHelper,
+        );
+        $jobService = new JobService($connectionProvider, $compareService, $configService, $identifierHelper);
+        $executeService = new ExecuteService($connectionProvider);
 
-        $symfonyCommand = new MakeVersionCommand($jobService, $generateService, $executeService);
+        $symfonyCommand = new MakeVersionCommand($connectionProvider, $jobService, $generateService, $executeService);
 
         $forwardedParameters = [];
         $tableName = $input->getArgument('tableName');
