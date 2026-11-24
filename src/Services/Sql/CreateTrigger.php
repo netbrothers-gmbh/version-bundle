@@ -15,6 +15,8 @@ namespace NetBrothers\VersionBundle\Services\Sql;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Table;
+use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
+use NetBrothers\VersionBundle\Services\VersionConfigService;
 
 /**
  * Generates SQL statements for creating versioning triggers on MariaDB/MySQL tables.
@@ -23,6 +25,8 @@ final readonly class CreateTrigger
 {
     public function __construct(
         private IdentifierHelper $identifierHelper,
+        private VersionTableSchemaBuilder $schemaBuilder,
+        private VersionConfigService $configService,
     ) {
     }
 
@@ -89,12 +93,17 @@ final readonly class CreateTrigger
         string $quotedVersionTable,
         AbstractPlatform $platform,
     ): string {
+        $protectedPkColumns = $this->schemaBuilder->getVersionPrimaryKeyColumnNames($originTable);
+        $ignoredColumns = array_values(array_diff($this->configService->getIgnoreColumns(), $protectedPkColumns));
+
         $columnNames = [];
         $values = [];
         foreach ($originTable->getColumns() as $column) {
-            $quotedCol = $platform->quoteSingleIdentifier(
-                $column->getObjectName()->getIdentifier()->getValue(),
-            );
+            $columnName = $column->getObjectName()->getIdentifier()->getValue();
+            if (in_array($columnName, $ignoredColumns, true)) {
+                continue;
+            }
+            $quotedCol = $platform->quoteSingleIdentifier($columnName);
             $columnNames[] = $quotedCol;
             $values[] = 'NEW.' . $quotedCol;
         }

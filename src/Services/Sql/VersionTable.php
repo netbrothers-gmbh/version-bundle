@@ -17,6 +17,7 @@ use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Table;
 use NetBrothers\VersionBundle\Services\Schema\VersionTableSchemaBuilder;
+use NetBrothers\VersionBundle\Services\VersionConfigService;
 
 /**
  * Generates DBAL-based DDL for creating/dropping version tables and safely backfilling existing rows.
@@ -25,6 +26,7 @@ final readonly class VersionTable
 {
     public function __construct(
         private VersionTableSchemaBuilder $schemaBuilder,
+        private VersionConfigService $configService,
     ) {
     }
 
@@ -37,7 +39,8 @@ final readonly class VersionTable
      */
     public function getSqlCreate(Table $originTable, AbstractPlatform $platform): array
     {
-        $expectedVersionTable = $this->schemaBuilder->buildExpectedVersionTable($originTable);
+        $ignoreColumns = $this->configService->getIgnoreColumns();
+        $expectedVersionTable = $this->schemaBuilder->buildExpectedVersionTable($originTable, $ignoreColumns);
         $sql = $platform->getCreateTableSQL($expectedVersionTable);
 
         $originTableName = $originTable->getObjectName()->getUnqualifiedName()->getValue();
@@ -48,7 +51,7 @@ final readonly class VersionTable
         $quotedVersionColumn = $platform->quoteSingleIdentifier('version');
 
         $quotedColumns = [];
-        foreach ($originTable->getColumns() as $column) {
+        foreach ($expectedVersionTable->getColumns() as $column) {
             $quotedColumns[] = $platform->quoteSingleIdentifier(
                 $column->getObjectName()->getIdentifier()->getValue(),
             );

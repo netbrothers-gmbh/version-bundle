@@ -17,6 +17,7 @@ use Doctrine\DBAL\Exception;
 use NetBrothers\VersionBundle\Services\DatabaseConnectionProvider;
 use NetBrothers\VersionBundle\Services\GenerateService;
 use NetBrothers\VersionBundle\Services\JobService;
+use NetBrothers\VersionBundle\Services\Schema\TableSyncPlan;
 use NetBrothers\VersionBundle\Services\Sql\ExecuteService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -117,6 +118,7 @@ final class MakeVersionCommand extends Command
      *      'CreateTrigger': string[],
      *      'DropVersion': string[],
      *      'CreateVersion': string[],
+     *      'UpdateVersion': array<string, TableSyncPlan>,
      *      'Reports': string[],
      * } $jobs
      * @return string[]
@@ -154,8 +156,13 @@ final class MakeVersionCommand extends Command
             }
             if (in_array($tableName, $jobs['CreateVersion'], true)) {
                 $sql = array_merge($sql, $this->generateService->createVersionAndTriggers($tableName));
-            } elseif (in_array($tableName, $jobs['CreateTrigger'], true)) {
-                $sql = array_merge($sql, $this->generateService->createTriggers($tableName));
+            } else {
+                if (isset($jobs['UpdateVersion'][$tableName])) {
+                    $sql = array_merge($sql, $jobs['UpdateVersion'][$tableName]->sql);
+                }
+                if (in_array($tableName, $jobs['CreateTrigger'], true)) {
+                    $sql = array_merge($sql, $this->generateService->createTriggers($tableName));
+                }
             }
         }
         return $sql;
@@ -209,6 +216,7 @@ final class MakeVersionCommand extends Command
             $io->writeln('Drop Versions: ' . ($tablesWithVersion + count($jobs['DropVersion'])));
             $io->writeln('Drop Triggers: ' . $tablesWithVersion);
             $io->writeln('Create Version: 0');
+            $io->writeln('Update Version: 0');
             $io->writeln('Create Triggers: 0');
             return;
         }
@@ -218,6 +226,7 @@ final class MakeVersionCommand extends Command
             $io->writeln('Drop Versions: 0');
             $io->writeln('Drop Triggers: ' . count($tableNames));
             $io->writeln('Create Version: 0');
+            $io->writeln('Update Version: 0');
             $io->writeln('Create Triggers: 0');
             return;
         }
@@ -226,6 +235,7 @@ final class MakeVersionCommand extends Command
         $io->writeln('Drop Versions: ' . count($jobs['DropVersion']));
         $io->writeln('Drop Triggers: ' . count($jobs['DropTrigger']));
         $io->writeln('Create Version: ' . count($jobs['CreateVersion']));
+        $io->writeln('Update Version: ' . count($jobs['UpdateVersion']));
         $io->writeln('Create Triggers: ' . count($jobs['CreateTrigger']));
     }
 }

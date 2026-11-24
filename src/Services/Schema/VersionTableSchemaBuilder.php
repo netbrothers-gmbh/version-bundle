@@ -32,7 +32,10 @@ final readonly class VersionTableSchemaBuilder
     ) {
     }
 
-    public function buildExpectedVersionTable(Table $originTable): Table
+    /**
+     * @param string[] $ignoreColumns Non-PK column names to omit from the version table
+     */
+    public function buildExpectedVersionTable(Table $originTable, array $ignoreColumns = []): Table
     {
         $originTableName = $originTable->getObjectName()->getUnqualifiedName()->getValue();
         $versionTableName = $this->identifierHelper->buildVersionTableName($originTableName);
@@ -46,6 +49,10 @@ final readonly class VersionTableSchemaBuilder
         foreach ($originTable->getColumns() as $column) {
             $columnName = $column->getObjectName()->getIdentifier()->getValue();
             $isPkColumn = in_array($columnName, $versionPkColumns, true);
+
+            if (!$isPkColumn && in_array($columnName, $ignoreColumns, true)) {
+                continue;
+            }
 
             $columnEditor = $column->edit();
             $columnEditor->setAutoincrement(false);
@@ -87,6 +94,18 @@ final readonly class VersionTableSchemaBuilder
         }
 
         return $tableEditor->create();
+    }
+
+    /**
+     * Returns the primary key column names for the version table (origin PK columns + `version`).
+     *
+     * @return non-empty-string[]
+     */
+    public function getVersionPrimaryKeyColumnNames(Table $originTable): array
+    {
+        return $this->buildVersionPrimaryKeyColumnNames(
+            $this->extractOriginPrimaryKeyColumnNames($originTable),
+        );
     }
 
     /**
